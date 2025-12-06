@@ -1,0 +1,3 @@
+[discord]
+# Add your Discord bot token below. This file is read if DISCORD_TOKEN is not set in the environment.
+token = "YOUR_DISCORD_BOT_TOKEN"
