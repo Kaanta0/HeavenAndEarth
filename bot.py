@@ -8,20 +8,135 @@ import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
-from heaven_and_earth.models import Player, REALM_ORDER
-from heaven_and_earth.storage import PlayerRepository
+from heaven_and_earth.models import Player, REALM_ORDER, World, Zone, slugify
+from heaven_and_earth.storage import PlayerRepository, WorldRepository
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
 
 
-class PlayerService:
+class WorldService:
     def __init__(self) -> None:
+        self.repo = WorldRepository()
+        self.worlds: Dict[str, World] = {}
+        self.zones: Dict[str, Zone] = {}
+
+    def load(self) -> None:
+        self.worlds, self.zones = self.repo.load_all()
+
+    def save(self) -> None:
+        self.repo.save_all(self.worlds, self.zones)
+
+    def beginning_world(self) -> World | None:
+        return next((world for world in self.worlds.values() if world.beginning), None)
+
+    def beginning_zone(self) -> Zone | None:
+        return next((zone for zone in self.zones.values() if zone.beginning), None)
+
+    def get_world(self, world_id: str | None) -> World | None:
+        if not world_id:
+            return None
+        return self.worlds.get(world_id)
+
+    def get_zone(self, zone_id: str | None) -> Zone | None:
+        if not zone_id:
+            return None
+        return self.zones.get(zone_id)
+
+    def create_world(self, name: str, role_id: int, beginning: bool, time_flow: float) -> World:
+        world_id = slugify(name)
+        if world_id in self.worlds:
+            raise ValueError("A world with that name already exists")
+        if beginning and any(world.beginning for world in self.worlds.values()):
+            raise ValueError("Only one beginning world can exist")
+        world = World(
+            id=world_id,
+            name=name,
+            current_location_role_id=role_id,
+            beginning=beginning,
+            time_flow=time_flow if time_flow > 0 else 1.0,
+        )
+        self.worlds[world_id] = world
+        self.save()
+        return world
+
+    def create_zone(
+        self,
+        world_id: str,
+        name: str,
+        channel_id: int,
+        role_id: int,
+        x_size: int,
+        y_size: int,
+        beginning: bool,
+        time_flow: float,
+    ) -> Zone:
+        if world_id not in self.worlds:
+            raise ValueError("World not found")
+        if beginning and not self.worlds[world_id].beginning:
+            raise ValueError("Beginning zones must be placed in the beginning world")
+        if beginning and any(zone.beginning for zone in self.zones.values()):
+            raise ValueError("Only one beginning zone can exist")
+        zone_id = f"{world_id}-{slugify(name)}"
+        if zone_id in self.zones:
+            raise ValueError("A zone with that name already exists in this world")
+        zone = Zone(
+            id=zone_id,
+            world_id=world_id,
+            name=name,
+            channel_id=channel_id,
+            current_location_role_id=role_id,
+            x_size=max(1, x_size),
+            y_size=max(1, y_size),
+            beginning=beginning,
+            time_flow=time_flow if time_flow > 0 else 1.0,
+        )
+        self.zones[zone_id] = zone
+        self.save()
+        return zone
+
+    def get_zones_for_world(self, world_id: str) -> List[Zone]:
+        return [zone for zone in self.zones.values() if zone.world_id == world_id]
+
+    def effective_time_flow(self, player: Player) -> float:
+        world_flow = 1.0
+        zone_flow = 1.0
+        world = self.get_world(player.world_id)
+        zone = self.get_zone(player.zone_id)
+        if world:
+            world_flow = max(world.time_flow, 0.0) or 1.0
+        if zone:
+            zone_flow = max(zone.time_flow, 0.0) or 1.0
+        return world_flow * zone_flow
+
+    def clamp_position(self, player: Player) -> None:
+        zone = self.get_zone(player.zone_id)
+        if not zone:
+            player.position_x = 0
+            player.position_y = 0
+            return
+        player.position_x = min(max(player.position_x, 0), max(zone.x_size - 1, 0))
+        player.position_y = min(max(player.position_y, 0), max(zone.y_size - 1, 0))
+
+    def find_world_id(self, name: str) -> str | None:
+        slug = slugify(name)
+        if slug in self.worlds:
+            return slug
+        for world_id, world in self.worlds.items():
+            if world.name.lower() == name.lower():
+                return world_id
+        return None
+
+class PlayerService:
+    def __init__(self, world_service: WorldService) -> None:
         self.repo = PlayerRepository()
         self.players: Dict[int, Player] = {}
+        self.world_service = world_service
 
     def load(self) -> None:
         self.players = self.repo.load_all()
+        for player in self.players.values():
+            self.world_service.clamp_position(player)
 
     def save(self) -> None:
         self.repo.save_all(self.players)
@@ -29,10 +144,26 @@ class PlayerService:
     def is_registered(self, user: discord.abc.User) -> bool:
         return user.id in self.players
 
+    def assign_beginning_location(self, player: Player) -> None:
+        world = self.world_service.beginning_world()
+        zone = self.world_service.beginning_zone()
+        if world and zone and zone.world_id == world.id:
+            player.world_id = world.id
+            player.zone_id = zone.id
+            player.position_x = 0
+            player.position_y = 0
+            self.world_service.clamp_position(player)
+
+    def ensure_location(self, player: Player) -> None:
+        if not player.world_id or not player.zone_id:
+            self.assign_beginning_location(player)
+        self.world_service.clamp_position(player)
+
     def register(self, user: discord.abc.User) -> Player:
         if self.is_registered(user):
             raise ValueError("Player already registered")
         player = self.repo.create_player(self.players, user.id, user.display_name)
+        self.assign_beginning_location(player)
         self.save()
         return player
 
@@ -42,22 +173,40 @@ class PlayerService:
     def apply_offline_ticks(self) -> List[str]:
         now = int(time.time())
         logs: List[str] = []
+        changed = False
         for player in self.players.values():
             elapsed = max(now - player.last_tick_timestamp, 0)
-            ticks = elapsed // 60
-            if ticks:
-                notes = player.apply_ticks(int(ticks))
-                logs.extend([f"{player.name}: {note}" for note in notes])
-        if logs:
+            real_ticks = elapsed // 60
+            if real_ticks:
+                total_ticks = player.tick_buffer + real_ticks * self.world_service.effective_time_flow(player)
+                ticks_to_apply = int(total_ticks)
+                if ticks_to_apply:
+                    notes = player.apply_ticks(int(ticks_to_apply))
+                    logs.extend([f"{player.name}: {note}" for note in notes])
+                player.tick_buffer = total_ticks - ticks_to_apply
+                player.last_tick_timestamp += int(real_ticks * 60)
+                if player.last_tick_timestamp > now:
+                    player.last_tick_timestamp = now
+                changed = True
+        if logs or changed:
             self.save()
         return logs
 
     def apply_live_tick(self) -> List[str]:
+        now = int(time.time())
         logs: List[str] = []
         for player in self.players.values():
-            notes = player.apply_ticks(1)
-            logs.extend([f"{player.name}: {note}" for note in notes])
-        self.save()
+            total_ticks = player.tick_buffer + self.world_service.effective_time_flow(player)
+            ticks_to_apply = int(total_ticks)
+            if ticks_to_apply:
+                notes = player.apply_ticks(int(ticks_to_apply))
+                logs.extend([f"{player.name}: {note}" for note in notes])
+            player.tick_buffer = total_ticks - ticks_to_apply
+            player.last_tick_timestamp = now
+        if logs:
+            self.save()
+        else:
+            self.repo.save_all(self.players)
         return logs
 
 
@@ -90,9 +239,10 @@ PROFILE_SUBTABS = {
 
 
 class MainMenuView(discord.ui.View):
-    def __init__(self, service: PlayerService):
+    def __init__(self, service: PlayerService, world_service: WorldService):
         super().__init__(timeout=120)
         self.service = service
+        self.world_service = world_service
 
     @discord.ui.button(label="Profile", style=discord.ButtonStyle.primary)
     async def profile_button(self, interaction: discord.Interaction, _: discord.ui.Button):
@@ -107,6 +257,16 @@ class MainMenuView(discord.ui.View):
             view=ProfileView(self.service, player),
             ephemeral=True,
         )
+
+    @discord.ui.button(label="Travel", style=discord.ButtonStyle.secondary)
+    async def travel_button(self, interaction: discord.Interaction, _: discord.ui.Button):
+        player = self.service.get_player(interaction.user)
+        if not player:
+            await interaction.response.send_message(
+                "You are not registered yet. Use /register to join the world.", ephemeral=True
+            )
+            return
+        await send_travel_panel(interaction, player, self.service, self.world_service)
 
 
 class TabSelect(discord.ui.Select):
@@ -256,14 +416,113 @@ def build_profile_embed(player: Player, tab: str, subtab: Optional[str]) -> disc
     return embed
 
 
+def render_minimap(player: Player, zone: Zone) -> str:
+    width = min(zone.x_size, 15)
+    height = min(zone.y_size, 16)
+    start_x = max(0, min(player.position_x - width // 2, max(zone.x_size - width, 0)))
+    start_y = max(0, min(player.position_y - height // 2, max(zone.y_size - height, 0)))
+    grid: List[str] = []
+    for y in range(height):
+        row = []
+        for x in range(width):
+            global_x = start_x + x
+            global_y = start_y + y
+            row.append("P" if (global_x, global_y) == (player.position_x, player.position_y) else ".")
+        grid.append("".join(row))
+    return "\n".join(grid)
+
+
+def build_travel_embed(player: Player, world: World, zone: Zone, world_service: WorldService) -> discord.Embed:
+    embed = discord.Embed(title="Travel", colour=discord.Colour.green())
+    embed.add_field(name="World", value=world.name, inline=True)
+    embed.add_field(name="Zone", value=zone.name, inline=True)
+    embed.add_field(name="Coordinates", value=f"({player.position_x}, {player.position_y})", inline=False)
+    embed.add_field(
+        name="Time Flow",
+        value=f"x{world_service.effective_time_flow(player):.2f} (world {world.time_flow}x, zone {zone.time_flow}x)",
+        inline=False,
+    )
+    minimap = render_minimap(player, zone)
+    embed.description = f"```\n{minimap}\n```"
+    return embed
+
+
+class TravelView(discord.ui.View):
+    def __init__(self, service: PlayerService, world_service: WorldService, player: Player):
+        super().__init__(timeout=180)
+        self.service = service
+        self.world_service = world_service
+        self.player = player
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.id == self.player.user_id
+
+    async def on_timeout(self) -> None:
+        self.clear_items()
+
+    async def move(self, dx: int, dy: int, interaction: discord.Interaction) -> None:
+        zone = self.world_service.get_zone(self.player.zone_id)
+        world = self.world_service.get_world(self.player.world_id)
+        if not zone or not world:
+            await interaction.response.send_message("You are not in a valid location.", ephemeral=True)
+            return
+        self.player.position_x += dx
+        self.player.position_y += dy
+        self.world_service.clamp_position(self.player)
+        self.player.stats.steps_travelled += abs(dx) + abs(dy)
+        self.service.save()
+        await interaction.response.edit_message(
+            embed=build_travel_embed(self.player, world, zone, self.world_service), view=self
+        )
+
+    @discord.ui.button(label="↑", style=discord.ButtonStyle.primary)
+    async def up(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.move(0, -1, interaction)
+
+    @discord.ui.button(label="←", style=discord.ButtonStyle.secondary)
+    async def left(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.move(-1, 0, interaction)
+
+    @discord.ui.button(label="→", style=discord.ButtonStyle.secondary)
+    async def right(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.move(1, 0, interaction)
+
+    @discord.ui.button(label="↓", style=discord.ButtonStyle.primary)
+    async def down(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.move(0, 1, interaction)
+
+
+
+async def send_travel_panel(
+    interaction: discord.Interaction, player: Player, service: PlayerService, world_service: WorldService
+) -> None:
+    service.ensure_location(player)
+    world = world_service.get_world(player.world_id)
+    zone = world_service.get_zone(player.zone_id)
+    if not world or not zone:
+        await interaction.response.send_message(
+            "No valid location available. Create a beginning world and zone first.", ephemeral=True
+        )
+        return
+    world_service.clamp_position(player)
+    service.save()
+    await interaction.response.send_message(
+        embed=build_travel_embed(player, world, zone, world_service),
+        view=TravelView(service, world_service, player),
+        ephemeral=True,
+    )
+
+
 class HeavenAndEarthBot(commands.Bot):
     def __init__(self, **kwargs):
         intents = discord.Intents.default()
         intents.message_content = False
         super().__init__(command_prefix=commands.when_mentioned_or("!"), intents=intents, **kwargs)
-        self.service = PlayerService()
+        self.worlds = WorldService()
+        self.service = PlayerService(self.worlds)
 
     async def setup_hook(self) -> None:
+        self.worlds.load()
         self.service.load()
         offline_logs = self.service.apply_offline_ticks()
         for note in offline_logs:
@@ -299,7 +558,7 @@ async def main_menu(interaction: discord.Interaction):
         return
     await interaction.response.send_message(
         embed=discord.Embed(title="Heaven & Earth", description="Choose your path."),
-        view=MainMenuView(bot.service),
+        view=MainMenuView(bot.service, bot.worlds),
         ephemeral=True,
     )
 
@@ -317,6 +576,84 @@ async def profile(interaction: discord.Interaction):
         view=ProfileView(bot.service, player),
         ephemeral=True,
     )
+
+
+@bot.tree.command(
+    name="create_world",
+    description="Create a world with its own location role and time flow",
+    default_member_permissions=discord.Permissions(manage_guild=True),
+)
+async def create_world(
+    interaction: discord.Interaction,
+    name: str,
+    current_location_role: discord.Role,
+    beginning_world: bool,
+    time_flow: Optional[float] = 1.0,
+):
+    try:
+        world = bot.worlds.create_world(name, current_location_role.id, beginning_world, time_flow or 1.0)
+    except ValueError as exc:
+        await interaction.response.send_message(str(exc), ephemeral=True)
+        return
+    await interaction.response.send_message(
+        f"World **{world.name}** created with role <@&{world.current_location_role_id}>. Time flow: x{world.time_flow}.",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
+    name="create_zone",
+    description="Create a zone within an existing world",
+    default_member_permissions=discord.Permissions(manage_guild=True),
+)
+async def create_zone(
+    interaction: discord.Interaction,
+    world_name: str,
+    name: str,
+    channel: discord.TextChannel,
+    current_location_role: discord.Role,
+    x_size: int,
+    y_size: int,
+    beginning_zone: bool,
+    time_flow: Optional[float] = 1.0,
+):
+    world_id = bot.worlds.find_world_id(world_name)
+    if not world_id:
+        await interaction.response.send_message("World not found.", ephemeral=True)
+        return
+    try:
+        zone = bot.worlds.create_zone(
+            world_id,
+            name,
+            channel.id,
+            current_location_role.id,
+            x_size,
+            y_size,
+            beginning_zone,
+            time_flow or 1.0,
+        )
+    except ValueError as exc:
+        await interaction.response.send_message(str(exc), ephemeral=True)
+        return
+    await interaction.response.send_message(
+        (
+            f"Zone **{zone.name}** created in **{bot.worlds.worlds[world_id].name}**. "
+            f"Role: <@&{zone.current_location_role_id}> Channel: {channel.mention}. "
+            f"Size: {zone.x_size}x{zone.y_size}. Time flow x{zone.time_flow}."
+        ),
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(name="travel", description="Open the travel minimap")
+async def travel(interaction: discord.Interaction):
+    player = bot.service.get_player(interaction.user)
+    if not player:
+        await interaction.response.send_message(
+            "You are not registered yet. Use /register to begin cultivating.", ephemeral=True
+        )
+        return
+    await send_travel_panel(interaction, player, bot.service, bot.worlds)
 
 
 @bot.tree.command(name="register", description="Register as a cultivator and begin tracking your journey")
