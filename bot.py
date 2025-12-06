@@ -316,9 +316,10 @@ class MainMenuView(discord.ui.View):
                 "You are not registered yet. Use /register to join the world.", ephemeral=True
             )
             return
+        avatar_url = interaction.user.display_avatar.url
         await interaction.response.send_message(
-            embed=build_profile_embed(player, "overview", None),
-            view=ProfileView(self.service, player),
+            embed=build_profile_embed(player, "overview", None, avatar_url),
+            view=ProfileView(self.service, player, avatar_url),
             ephemeral=True,
         )
 
@@ -351,7 +352,12 @@ class TabSelect(discord.ui.Select):
         self.profile_view.current_tab = self.values[0]
         self.profile_view.update_subtabs()
         await interaction.response.edit_message(
-            embed=build_profile_embed(self.player, self.profile_view.current_tab, self.profile_view.current_subtab),
+            embed=build_profile_embed(
+                self.player,
+                self.profile_view.current_tab,
+                self.profile_view.current_subtab,
+                self.profile_view.avatar_url,
+            ),
             view=self.profile_view,
         )
 
@@ -364,16 +370,22 @@ class SubTabSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         self.profile_view.current_subtab = self.values[0]
         await interaction.response.edit_message(
-            embed=build_profile_embed(self.profile_view.player, self.profile_view.current_tab, self.profile_view.current_subtab),
+            embed=build_profile_embed(
+                self.profile_view.player,
+                self.profile_view.current_tab,
+                self.profile_view.current_subtab,
+                self.profile_view.avatar_url,
+            ),
             view=self.profile_view,
         )
 
 
 class ProfileView(discord.ui.View):
-    def __init__(self, service: PlayerService, player: Player):
+    def __init__(self, service: PlayerService, player: Player, avatar_url: Optional[str] = None):
         super().__init__(timeout=180)
         self.service = service
         self.player = player
+        self.avatar_url = avatar_url
         self.current_tab: str = "overview"
         self.current_subtab: Optional[str] = None
         self.tab_select = TabSelect(player, self)
@@ -400,8 +412,12 @@ class ProfileView(discord.ui.View):
             self.current_subtab = None
 
 
-def build_profile_embed(player: Player, tab: str, subtab: Optional[str]) -> discord.Embed:
-    embed = discord.Embed(title=f"{player.name}'s Profile", colour=discord.Colour.blue())
+def build_profile_embed(
+    player: Player, tab: str, subtab: Optional[str], avatar_url: Optional[str] = None
+) -> discord.Embed:
+    embed = discord.Embed(title=f"{player.name}'s Profile", colour=discord.Colour.yellow())
+    if avatar_url:
+        embed.set_thumbnail(url=avatar_url)
     embed.set_footer(text="One in-game day passes every 60 seconds.")
     now = int(time.time())
     age_years = player.age_years(now)
@@ -576,6 +592,19 @@ async def send_travel_panel(
             "No valid location available. Create a beginning world and zone first.", ephemeral=True
         )
         return
+    if interaction.channel_id != zone.channel_id:
+        channel_hint = None
+        if interaction.guild:
+            channel = interaction.guild.get_channel(zone.channel_id)
+            if channel:
+                channel_hint = channel.mention
+        await interaction.response.send_message(
+            (
+                f"Travel can only be used in your current zone channel{f' ({channel_hint})' if channel_hint else ''}."
+            ),
+            ephemeral=True,
+        )
+        return
     world_service.clamp_position(player)
     service.save()
     await interaction.response.send_message(
@@ -643,9 +672,10 @@ async def profile(interaction: discord.Interaction):
             "You are not registered yet. Use /register to see your profile.", ephemeral=True
         )
         return
+    avatar_url = interaction.user.display_avatar.url
     await interaction.response.send_message(
-        embed=build_profile_embed(player, "overview", None),
-        view=ProfileView(bot.service, player),
+        embed=build_profile_embed(player, "overview", None, avatar_url),
+        view=ProfileView(bot.service, player, avatar_url),
         ephemeral=True,
     )
 
@@ -842,7 +872,11 @@ async def register(interaction: discord.Interaction):
         return
     player = bot.service.register(interaction.user)
     await interaction.response.send_message(
-        f"Welcome, {player.name}! Your cultivation journey has begun.", ephemeral=True
+        embed=discord.Embed(
+            description=f"Welcome, {player.name}! Your cultivation journey has begun.",
+            colour=discord.Colour.green(),
+        ),
+        ephemeral=True,
     )
 
 
