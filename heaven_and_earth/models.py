@@ -54,6 +54,18 @@ class CultivationProgress:
     exp: float = 0.0
     cultivation_rate: float = 1.0  # percent per tick -> exp per tick
 
+    def __post_init__(self) -> None:
+        if isinstance(self.realm, str):
+            try:
+                self.realm = Realm(self.realm)
+            except ValueError:
+                self.realm = Realm.QI_CONDENSATION
+        if isinstance(self.stage, str):
+            try:
+                self.stage = Stage(self.stage)
+            except ValueError:
+                self.stage = Stage.INITIAL
+
     def ticks_until_breakthrough(self) -> float:
         remaining = max(self.required_exp() - self.exp, 0)
         if self.cultivation_rate <= 0:
