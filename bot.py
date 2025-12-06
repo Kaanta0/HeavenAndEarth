@@ -9,7 +9,8 @@ from discord import app_commands
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
-from heaven_and_earth.models import Player, REALM_ORDER, World, Zone, slugify
+from heaven_and_earth.calendar import CalendarRepository, GameCalendar
+from heaven_and_earth.models import Player, REALM_ORDER, SECONDS_PER_TICK, World, Zone, slugify
 from heaven_and_earth.storage import PlayerRepository, WorldRepository
 
 logging.basicConfig(level=logging.INFO)
@@ -234,24 +235,52 @@ class PlayerService:
         if changed:
             self.save()
 
+    def _apply_time_flow_aging(self, player: Player, effective_ticks: int, real_ticks: int) -> bool:
+        """
+        Adjust the player's birthday so age tracks with time dilation.
+
+        A positive delta ages the player faster, while a negative delta (slow time
+        flow) makes them effectively younger by moving their birthday forward.
+        """
+
+        delta_ticks = effective_ticks - real_ticks
+        if not delta_ticks:
+            return False
+        player.birthday -= int(delta_ticks * SECONDS_PER_TICK)
+        return True
+
+    def _apply_time_progression(self, player: Player, real_ticks: int, now: int) -> tuple[List[str], bool]:
+        logs: List[str] = []
+        changed = False
+        total_ticks = player.tick_buffer + real_ticks * self.world_service.effective_time_flow(player)
+        ticks_to_apply = int(total_ticks)
+        if ticks_to_apply:
+            notes = player.apply_ticks(int(ticks_to_apply))
+            logs.extend([f"{player.name}: {note}" for note in notes])
+            changed = True
+        new_buffer = total_ticks - ticks_to_apply
+        if new_buffer != player.tick_buffer:
+            player.tick_buffer = new_buffer
+            changed = True
+        if self._apply_time_flow_aging(player, ticks_to_apply, real_ticks):
+            changed = True
+        player.last_tick_timestamp += int(real_ticks * SECONDS_PER_TICK)
+        changed = True
+        if player.last_tick_timestamp > now:
+            player.last_tick_timestamp = now
+        return logs, changed
+
     def apply_offline_ticks(self) -> List[str]:
         now = int(time.time())
         logs: List[str] = []
         changed = False
         for player in self.players.values():
             elapsed = max(now - player.last_tick_timestamp, 0)
-            real_ticks = elapsed // 60
+            real_ticks = elapsed // SECONDS_PER_TICK
             if real_ticks:
-                total_ticks = player.tick_buffer + real_ticks * self.world_service.effective_time_flow(player)
-                ticks_to_apply = int(total_ticks)
-                if ticks_to_apply:
-                    notes = player.apply_ticks(int(ticks_to_apply))
-                    logs.extend([f"{player.name}: {note}" for note in notes])
-                player.tick_buffer = total_ticks - ticks_to_apply
-                player.last_tick_timestamp += int(real_ticks * 60)
-                if player.last_tick_timestamp > now:
-                    player.last_tick_timestamp = now
-                changed = True
+                notes, player_changed = self._apply_time_progression(player, int(real_ticks), now)
+                logs.extend(notes)
+                changed = changed or player_changed
         if logs or changed:
             self.save()
         return logs
@@ -259,15 +288,14 @@ class PlayerService:
     def apply_live_tick(self) -> List[str]:
         now = int(time.time())
         logs: List[str] = []
+        changed = False
         for player in self.players.values():
-            total_ticks = player.tick_buffer + self.world_service.effective_time_flow(player)
-            ticks_to_apply = int(total_ticks)
-            if ticks_to_apply:
-                notes = player.apply_ticks(int(ticks_to_apply))
-                logs.extend([f"{player.name}: {note}" for note in notes])
-            player.tick_buffer = total_ticks - ticks_to_apply
-            player.last_tick_timestamp = now
-        if logs:
+            elapsed = max(now - player.last_tick_timestamp, 0)
+            real_ticks = max(int(elapsed // SECONDS_PER_TICK), 1)
+            notes, player_changed = self._apply_time_progression(player, real_ticks, now)
+            logs.extend(notes)
+            changed = changed or player_changed
+        if logs or changed:
             self.save()
         else:
             self.repo.save_all(self.players)
@@ -303,10 +331,11 @@ PROFILE_SUBTABS = {
 
 
 class MainMenuView(discord.ui.View):
-    def __init__(self, service: PlayerService, world_service: WorldService):
+    def __init__(self, service: PlayerService, world_service: WorldService, calendar: GameCalendar):
         super().__init__(timeout=120)
         self.service = service
         self.world_service = world_service
+        self.calendar = calendar
 
     @discord.ui.button(label="Profile", style=discord.ButtonStyle.primary)
     async def profile_button(self, interaction: discord.Interaction, _: discord.ui.Button):
@@ -318,8 +347,8 @@ class MainMenuView(discord.ui.View):
             return
         avatar_url = interaction.user.display_avatar.url
         await interaction.response.send_message(
-            embed=build_profile_embed(player, "overview", None, avatar_url),
-            view=ProfileView(self.service, player, avatar_url),
+            embed=build_profile_embed(player, self.calendar, "overview", None, avatar_url),
+            view=ProfileView(self.service, self.calendar, player, avatar_url),
             ephemeral=True,
         )
 
@@ -354,6 +383,7 @@ class TabSelect(discord.ui.Select):
         await interaction.response.edit_message(
             embed=build_profile_embed(
                 self.player,
+                self.profile_view.calendar,
                 self.profile_view.current_tab,
                 self.profile_view.current_subtab,
                 self.profile_view.avatar_url,
@@ -372,6 +402,7 @@ class SubTabSelect(discord.ui.Select):
         await interaction.response.edit_message(
             embed=build_profile_embed(
                 self.profile_view.player,
+                self.profile_view.calendar,
                 self.profile_view.current_tab,
                 self.profile_view.current_subtab,
                 self.profile_view.avatar_url,
@@ -381,9 +412,12 @@ class SubTabSelect(discord.ui.Select):
 
 
 class ProfileView(discord.ui.View):
-    def __init__(self, service: PlayerService, player: Player, avatar_url: Optional[str] = None):
+    def __init__(
+        self, service: PlayerService, calendar: GameCalendar, player: Player, avatar_url: Optional[str] = None
+    ):
         super().__init__(timeout=180)
         self.service = service
+        self.calendar = calendar
         self.player = player
         self.avatar_url = avatar_url
         self.current_tab: str = "overview"
@@ -413,16 +447,20 @@ class ProfileView(discord.ui.View):
 
 
 def build_profile_embed(
-    player: Player, tab: str, subtab: Optional[str], avatar_url: Optional[str] = None
+    player: Player,
+    calendar: GameCalendar,
+    tab: str,
+    subtab: Optional[str],
+    avatar_url: Optional[str] = None,
 ) -> discord.Embed:
     embed = discord.Embed(title=f"{player.name}'s Profile", colour=discord.Colour.yellow())
     if avatar_url:
         embed.set_thumbnail(url=avatar_url)
     embed.set_footer(text="One in-game day passes every 60 seconds.")
     now = int(time.time())
-    age_years = player.age_years(now)
+    age_years = player.age_years(calendar, now)
     lifespan_years = player.lifespan_years()
-    remaining_life = player.remaining_lifespan_years(now)
+    remaining_life = player.remaining_lifespan_years(calendar, now)
     cultivation = player.cultivation
     if tab == "overview":
         bar_length = 20
@@ -433,9 +471,10 @@ def build_profile_embed(
         progress_percent = max(0.0, min(ratio * 100, 100.0))
         progress_bar = "▓" * filled + "░" * (bar_length - filled)
         embed.description = (
+            f"Date: **{calendar.format_date(now)}**\n"
             f"Age: **{age_years:.2f}** years\n"
             f"Lifespan: **{remaining_life:.2f}/{lifespan_years:.0f}** years remaining\n"
-            f"Birthday: <t:{player.birthday}:D>\n"
+            f"Birthday: {calendar.format_date(player.birthday)}\n"
             f"Cultivation: **{cultivation.stage.value} {cultivation.realm.value}**\n"
             f"Progress: {cultivation.exp:.0f}/{required_exp:.0f}\n"
             f"{progress_bar} {progress_percent:.0f}%"
@@ -619,6 +658,8 @@ class HeavenAndEarthBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(command_prefix=commands.when_mentioned_or("!"), intents=intents, **kwargs)
+        self.calendar_repo = CalendarRepository()
+        self.calendar = GameCalendar(self.calendar_repo.load_or_create_start())
         self.worlds = WorldService()
         self.service = PlayerService(self.worlds)
         self.sync_guild_id = sync_guild_id
@@ -675,7 +716,7 @@ async def main_menu(interaction: discord.Interaction):
         return
     await interaction.response.send_message(
         embed=discord.Embed(title="Heaven & Earth", description="Choose your path."),
-        view=MainMenuView(bot.service, bot.worlds),
+        view=MainMenuView(bot.service, bot.worlds, bot.calendar),
         ephemeral=True,
     )
 
@@ -690,8 +731,8 @@ async def profile(interaction: discord.Interaction):
         return
     avatar_url = interaction.user.display_avatar.url
     await interaction.response.send_message(
-        embed=build_profile_embed(player, "overview", None, avatar_url),
-        view=ProfileView(bot.service, player, avatar_url),
+        embed=build_profile_embed(player, bot.calendar, "overview", None, avatar_url),
+        view=ProfileView(bot.service, bot.calendar, player, avatar_url),
         ephemeral=True,
     )
 
