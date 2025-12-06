@@ -44,6 +44,16 @@ class WorldService:
             return None
         return self.zones.get(zone_id)
 
+    def find_zone_id(self, world_id: str, name: str) -> str | None:
+        slug = slugify(name)
+        candidate = f"{world_id}-{slug}"
+        if candidate in self.zones:
+            return candidate
+        for zone_id, zone in self.zones.items():
+            if zone.world_id == world_id and zone.name.lower() == name.lower():
+                return zone_id
+        return None
+
     def create_world(self, name: str, role_id: int, beginning: bool, time_flow: float) -> World:
         world_id = slugify(name)
         if world_id in self.worlds:
@@ -93,6 +103,27 @@ class WorldService:
             time_flow=time_flow if time_flow > 0 else 1.0,
         )
         self.zones[zone_id] = zone
+        self.save()
+        return zone
+
+    def delete_world(self, world_id: str, player_service: Optional["PlayerService"] = None) -> tuple[World, List[Zone]]:
+        world = self.worlds.pop(world_id, None)
+        if not world:
+            raise ValueError("World not found")
+        removed_zones = [zone for zone in self.zones.values() if zone.world_id == world_id]
+        for zone in removed_zones:
+            self.zones.pop(zone.id, None)
+        if player_service:
+            player_service.handle_world_deleted(world_id, [zone.id for zone in removed_zones])
+        self.save()
+        return world, removed_zones
+
+    def delete_zone(self, zone_id: str, player_service: Optional["PlayerService"] = None) -> Zone:
+        zone = self.zones.pop(zone_id, None)
+        if not zone:
+            raise ValueError("Zone not found")
+        if player_service:
+            player_service.handle_zone_deleted(zone_id)
         self.save()
         return zone
 
@@ -170,6 +201,38 @@ class PlayerService:
 
     def get_player(self, user: discord.abc.User) -> Optional[Player]:
         return self.players.get(user.id)
+
+    def handle_zone_deleted(self, zone_id: str) -> None:
+        changed = False
+        for player in self.players.values():
+            if player.zone_id == zone_id:
+                player.zone_id = None
+                player.position_x = 0
+                player.position_y = 0
+                self.ensure_location(player)
+                changed = True
+        if changed:
+            self.save()
+
+    def handle_world_deleted(self, world_id: str, removed_zone_ids: List[str]) -> None:
+        changed = False
+        affected_zones = set(removed_zone_ids)
+        for player in self.players.values():
+            if player.world_id == world_id:
+                player.world_id = None
+                player.zone_id = None
+                player.position_x = 0
+                player.position_y = 0
+                self.ensure_location(player)
+                changed = True
+            elif player.zone_id in affected_zones:
+                player.zone_id = None
+                player.position_x = 0
+                player.position_y = 0
+                self.ensure_location(player)
+                changed = True
+        if changed:
+            self.save()
 
     def apply_offline_ticks(self) -> List[str]:
         now = int(time.time())
@@ -602,6 +665,17 @@ async def create_world(
     )
 
 
+@create_world.autocomplete("name")
+async def world_name_autocomplete(interaction: discord.Interaction, current: str):
+    choices = []
+    if current:
+        slug = slugify(current)
+        choices.append(app_commands.Choice(name=current, value=current))
+        if slug != current:
+            choices.append(app_commands.Choice(name=slug, value=slug))
+    return choices[:25]
+
+
 @app_commands.checks.has_permissions(manage_guild=True)
 @bot.tree.command(
     name="create_zone",
@@ -644,6 +718,100 @@ async def create_zone(
         ),
         ephemeral=True,
     )
+
+
+@create_zone.autocomplete("world_name")
+async def world_choice_autocomplete(interaction: discord.Interaction, current: str):
+    matches = []
+    for world in bot.worlds.worlds.values():
+        if current.lower() in world.name.lower():
+            matches.append(app_commands.Choice(name=world.name, value=world.name))
+    return matches[:25]
+
+
+@create_zone.autocomplete("name")
+async def zone_name_autocomplete(_: discord.Interaction, current: str):
+    return [app_commands.Choice(name=current, value=current)][:25]
+
+
+@app_commands.checks.has_permissions(manage_guild=True)
+@bot.tree.command(
+    name="delete_world",
+    description="Delete a world and its zones",
+)
+async def delete_world(interaction: discord.Interaction, world_name: str):
+    world_id = bot.worlds.find_world_id(world_name)
+    if not world_id:
+        await interaction.response.send_message("World not found.", ephemeral=True)
+        return
+    try:
+        world, removed_zones = bot.worlds.delete_world(world_id, bot.service)
+    except ValueError as exc:
+        await interaction.response.send_message(str(exc), ephemeral=True)
+        return
+    zone_list = ", ".join(zone.name for zone in removed_zones) if removed_zones else "None"
+    await interaction.response.send_message(
+        f"World **{world.name}** deleted. Removed zones: {zone_list}.",
+        ephemeral=True,
+    )
+
+
+@delete_world.autocomplete("world_name")
+async def delete_world_autocomplete(interaction: discord.Interaction, current: str):
+    matches = []
+    for world in bot.worlds.worlds.values():
+        if current.lower() in world.name.lower():
+            matches.append(app_commands.Choice(name=world.name, value=world.name))
+    return matches[:25]
+
+
+@app_commands.checks.has_permissions(manage_guild=True)
+@bot.tree.command(
+    name="delete_zone",
+    description="Delete a zone from a world",
+)
+async def delete_zone(interaction: discord.Interaction, world_name: str, zone_name: str):
+    world_id = bot.worlds.find_world_id(world_name)
+    if not world_id:
+        await interaction.response.send_message("World not found.", ephemeral=True)
+        return
+    zone_id = bot.worlds.find_zone_id(world_id, zone_name)
+    if not zone_id:
+        await interaction.response.send_message("Zone not found in that world.", ephemeral=True)
+        return
+    try:
+        zone = bot.worlds.delete_zone(zone_id, bot.service)
+    except ValueError as exc:
+        await interaction.response.send_message(str(exc), ephemeral=True)
+        return
+    world = bot.worlds.worlds.get(world_id)
+    world_display = world.name if world else world_name
+    await interaction.response.send_message(
+        f"Zone **{zone.name}** removed from **{world_display}**.",
+        ephemeral=True,
+    )
+
+
+@delete_zone.autocomplete("world_name")
+async def delete_zone_world_autocomplete(interaction: discord.Interaction, current: str):
+    matches = []
+    for world in bot.worlds.worlds.values():
+        if current.lower() in world.name.lower():
+            matches.append(app_commands.Choice(name=world.name, value=world.name))
+    return matches[:25]
+
+
+@delete_zone.autocomplete("zone_name")
+async def delete_zone_autocomplete(interaction: discord.Interaction, current: str):
+    world_name = interaction.namespace.world_name
+    world_id = bot.worlds.find_world_id(world_name)
+    if not world_id:
+        return []
+    matches = []
+    for zone in bot.worlds.zones.values():
+        if zone.world_id == world_id and current.lower() in zone.name.lower():
+            matches.append(app_commands.Choice(name=zone.name, value=zone.name))
+    return matches[:25]
 
 
 @bot.tree.command(name="travel", description="Open the travel minimap")
