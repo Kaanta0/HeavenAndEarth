@@ -50,6 +50,8 @@ A xianxia cultivation-themed Discord RPG bot featuring automated time progressio
    pip install -r requirements.txt
    ```
 2. **Configure your token** using one of the methods above.
+   - If you want to avoid global application-command rate limits during development, set `DISCORD_GUILD_ID` to a single guild ID. Commands will sync only to that guild.
+   - Enable the **Message Content Intent** for your bot in the Discord Developer Portal (required because the bot requests this privileged intent).
 3. **Run the bot**
    ```bash
    python bot.py
