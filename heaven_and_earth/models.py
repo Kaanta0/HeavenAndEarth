@@ -170,7 +170,11 @@ class Player:
         return logs
 
     def to_dict(self) -> Dict:
-        return dataclasses.asdict(self)
+        data = dataclasses.asdict(self)
+        for key in ("world_id", "zone_id"):
+            if data.get(key) is None:
+                data.pop(key, None)
+        return data
 
     @staticmethod
     def from_dict(data: Dict) -> "Player":
