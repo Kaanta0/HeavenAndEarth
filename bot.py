@@ -235,20 +235,6 @@ class PlayerService:
         if changed:
             self.save()
 
-    def _apply_time_flow_aging(self, player: Player, effective_ticks: int, real_ticks: int) -> bool:
-        """
-        Adjust the player's birthday so age tracks with time dilation.
-
-        A positive delta ages the player faster, while a negative delta (slow time
-        flow) makes them effectively younger by moving their birthday forward.
-        """
-
-        delta_ticks = effective_ticks - real_ticks
-        if not delta_ticks:
-            return False
-        player.birthday -= int(delta_ticks * SECONDS_PER_TICK)
-        return True
-
     def _apply_time_progression(self, player: Player, real_ticks: int, now: int) -> tuple[List[str], bool]:
         logs: List[str] = []
         changed = False
@@ -261,8 +247,6 @@ class PlayerService:
         new_buffer = total_ticks - ticks_to_apply
         if new_buffer != player.tick_buffer:
             player.tick_buffer = new_buffer
-            changed = True
-        if self._apply_time_flow_aging(player, ticks_to_apply, real_ticks):
             changed = True
         player.last_tick_timestamp += int(real_ticks * SECONDS_PER_TICK)
         changed = True
@@ -347,8 +331,10 @@ class MainMenuView(discord.ui.View):
             return
         avatar_url = interaction.user.display_avatar.url
         await interaction.response.send_message(
-            embed=build_profile_embed(player, self.calendar, "overview", None, avatar_url),
-            view=ProfileView(self.service, self.calendar, player, avatar_url),
+            embed=build_profile_embed(
+                player, self.calendar, "overview", None, avatar_url, self.world_service
+            ),
+            view=ProfileView(self.service, self.world_service, self.calendar, player, avatar_url),
             ephemeral=True,
         )
 
@@ -387,6 +373,7 @@ class TabSelect(discord.ui.Select):
                 self.profile_view.current_tab,
                 self.profile_view.current_subtab,
                 self.profile_view.avatar_url,
+                self.profile_view.world_service,
             ),
             view=self.profile_view,
         )
@@ -406,6 +393,7 @@ class SubTabSelect(discord.ui.Select):
                 self.profile_view.current_tab,
                 self.profile_view.current_subtab,
                 self.profile_view.avatar_url,
+                self.profile_view.world_service,
             ),
             view=self.profile_view,
         )
@@ -413,10 +401,16 @@ class SubTabSelect(discord.ui.Select):
 
 class ProfileView(discord.ui.View):
     def __init__(
-        self, service: PlayerService, calendar: GameCalendar, player: Player, avatar_url: Optional[str] = None
+        self,
+        service: PlayerService,
+        world_service: WorldService,
+        calendar: GameCalendar,
+        player: Player,
+        avatar_url: Optional[str] = None,
     ):
         super().__init__(timeout=180)
         self.service = service
+        self.world_service = world_service
         self.calendar = calendar
         self.player = player
         self.avatar_url = avatar_url
@@ -452,12 +446,25 @@ def build_profile_embed(
     tab: str,
     subtab: Optional[str],
     avatar_url: Optional[str] = None,
+    world_service: Optional[WorldService] = None,
 ) -> discord.Embed:
-    embed = discord.Embed(title=f"{player.name}'s Profile", colour=discord.Colour.yellow())
+    now = int(time.time())
+    effective_flow = 1.0
+    world_name = "Unknown world"
+    zone_name = "Unknown zone"
+    if world_service:
+        effective_flow = max(world_service.effective_time_flow(player), 0.0) or 1.0
+        world = world_service.get_world(player.world_id)
+        zone = world_service.get_zone(player.zone_id)
+        world_name = world.name if world else world_name
+        zone_name = zone.name if zone else zone_name
+
+    day_seconds = SECONDS_PER_TICK / effective_flow if effective_flow > 0 else SECONDS_PER_TICK
+
+    embed = discord.Embed(title="**__Profile__**", colour=discord.Colour.yellow())
     if avatar_url:
         embed.set_thumbnail(url=avatar_url)
-    embed.set_footer(text="One in-game day passes every 60 seconds.")
-    now = int(time.time())
+    embed.set_footer(text=f"One in-game day passes every {day_seconds:.0f} seconds.")
     age_years = player.age_years(calendar, now)
     lifespan_years = player.lifespan_years()
     remaining_life = player.remaining_lifespan_years(calendar, now)
@@ -467,15 +474,16 @@ def build_profile_embed(
         required_exp = cultivation.required_exp()
         ratio = cultivation.exp / required_exp if required_exp else 0.0
         clamped_ratio = max(0.0, min(ratio, 1.0))
-        filled = int(round(clamped_ratio * bar_length))
+        filled = int(clamped_ratio * bar_length)
         progress_percent = max(0.0, min(ratio * 100, 100.0))
         progress_bar = "▓" * filled + "░" * (bar_length - filled)
         embed.description = (
-            f"Date: **{calendar.format_date(now)}**\n"
-            f"Age: **{age_years:.2f}** years\n"
-            f"Lifespan: **{remaining_life:.2f}/{lifespan_years:.0f}** years remaining\n"
-            f"Birthday: {calendar.format_date(player.birthday)}\n"
-            f"Cultivation: **{cultivation.stage.value} {cultivation.realm.value}**\n"
+            f"*{calendar.format_date(now)}*\n"
+            f"Currently at {world_name} (world) | {zone_name} (zone)\n\n"
+            f"Age: {age_years:.2f} years old\n"
+            f"Lifespan: {remaining_life:.2f} years remaining of {lifespan_years:.0f}\n"
+            f"Birthday: {calendar.format_date(player.birthday)}\n\n"
+            f"Cultivation: {cultivation.stage.value} {cultivation.realm.value}\n"
             f"Progress: {cultivation.exp:.0f}/{required_exp:.0f}\n"
             f"{progress_bar} {progress_percent:.0f}%"
         )
@@ -731,8 +739,10 @@ async def profile(interaction: discord.Interaction):
         return
     avatar_url = interaction.user.display_avatar.url
     await interaction.response.send_message(
-        embed=build_profile_embed(player, bot.calendar, "overview", None, avatar_url),
-        view=ProfileView(bot.service, bot.calendar, player, avatar_url),
+        embed=build_profile_embed(
+            player, bot.calendar, "overview", None, avatar_url, bot.worlds
+        ),
+        view=ProfileView(bot.service, bot.worlds, bot.calendar, player, avatar_url),
         ephemeral=True,
     )
 
