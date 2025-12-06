@@ -5,8 +5,11 @@ import time
 from dataclasses import dataclass, field
 from random import random
 from enum import Enum
-from typing import Dict, List
+from typing import TYPE_CHECKING, Dict, List
 import re
+
+if TYPE_CHECKING:  # pragma: no cover - imported only for type hints
+    from .calendar import GameCalendar
 
 
 class Realm(str, Enum):
@@ -161,16 +164,16 @@ class Player:
     position_y: int = 0
     tick_buffer: float = 0.0
 
-    def age_years(self, now: int | None = None) -> float:
+    def age_years(self, calendar: "GameCalendar", now: int | None = None) -> float:
         now = now or int(time.time())
-        days_lived = max(now - self.birthday, 0) / SECONDS_PER_TICK
+        days_lived = calendar.days_elapsed(self.birthday, now)
         return days_lived / DAYS_PER_YEAR
 
     def lifespan_years(self) -> float:
         return REALM_LIFESPAN_YEARS.get(self.cultivation.realm, REALM_LIFESPAN_YEARS[Realm.QI_CONDENSATION])
 
-    def remaining_lifespan_years(self, now: int | None = None) -> float:
-        return max(self.lifespan_years() - self.age_years(now), 0.0)
+    def remaining_lifespan_years(self, calendar: "GameCalendar", now: int | None = None) -> float:
+        return max(self.lifespan_years() - self.age_years(calendar, now), 0.0)
 
     def apply_ticks(self, ticks: int) -> List[str]:
         self.stats.hours_cultivated += ticks * 24
