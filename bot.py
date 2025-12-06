@@ -581,7 +581,7 @@ async def profile(interaction: discord.Interaction):
 @bot.tree.command(
     name="create_world",
     description="Create a world with its own location role and time flow",
-    default_member_permissions=discord.Permissions(manage_guild=True),
+    default_permissions=discord.Permissions(manage_guild=True),
 )
 async def create_world(
     interaction: discord.Interaction,
@@ -604,7 +604,7 @@ async def create_world(
 @bot.tree.command(
     name="create_zone",
     description="Create a zone within an existing world",
-    default_member_permissions=discord.Permissions(manage_guild=True),
+    default_permissions=discord.Permissions(manage_guild=True),
 )
 async def create_zone(
     interaction: discord.Interaction,
