@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from random import random
 from enum import Enum
 from typing import Dict, List
-import re
 
 
 class Realm(str, Enum):
@@ -143,11 +142,6 @@ class Player:
         default_factory=lambda: {k: dataclasses.asdict(v) for k, v in DEFAULT_SLOTS.items()}
     )
     last_tick_timestamp: int = field(default_factory=default_timestamp)
-    world_id: str | None = None
-    zone_id: str | None = None
-    position_x: int = 0
-    position_y: int = 0
-    tick_buffer: float = 0.0
 
     def age_years(self, now: int | None = None) -> float:
         now = now or int(time.time())
@@ -167,6 +161,7 @@ class Player:
             lowered = note.lower()
             if "tribulation" in lowered and "overcome" in lowered:
                 self.stats.tribulations_survived += 1
+        self.last_tick_timestamp += ticks * 60
         return logs
 
     def to_dict(self) -> Dict:
@@ -186,35 +181,4 @@ class Player:
             if data.get("equipment")
             else {k: dataclasses.asdict(v) for k, v in DEFAULT_SLOTS.items()},
             last_tick_timestamp=data.get("last_tick_timestamp", default_timestamp()),
-            world_id=data.get("world_id"),
-            zone_id=data.get("zone_id"),
-            position_x=int(data.get("position_x", 0)),
-            position_y=int(data.get("position_y", 0)),
-            tick_buffer=float(data.get("tick_buffer", 0.0)),
         )
-
-
-def slugify(name: str) -> str:
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", name).strip("-").lower()
-    return slug or "world"
-@dataclass
-class World:
-    id: str
-    name: str
-    current_location_role_id: int
-    beginning: bool = False
-    time_flow: float = 1.0
-
-
-@dataclass
-class Zone:
-    id: str
-    world_id: str
-    name: str
-    channel_id: int
-    current_location_role_id: int
-    x_size: int
-    y_size: int
-    beginning: bool = False
-    time_flow: float = 1.0
-
