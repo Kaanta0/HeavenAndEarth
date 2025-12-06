@@ -10,13 +10,6 @@ from typing import Dict, List
 
 class Realm(str, Enum):
     QI_CONDENSATION = "Qi Condensation"
-    FOUNDATION_ESTABLISHMENT = "Foundation Establishment"
-    CORE_FORMATION = "Core Formation"
-    NASCENT_SOUL = "Nascent Soul"
-    SOUL_TRANSFORMATION = "Soul Transformation"
-    VOID_REFINEMENT = "Void Refinement"
-    BODY_INTEGRATION = "Body Integration"
-    GREAT_ASCENSION = "Great Ascension"
 
 
 class Stage(str, Enum):
@@ -36,20 +29,21 @@ STAGE_ORDER: List[Stage] = [
 ]
 
 
-REALM_ORDER: List[Realm] = [
-    Realm.QI_CONDENSATION,
-    Realm.FOUNDATION_ESTABLISHMENT,
-    Realm.CORE_FORMATION,
-    Realm.NASCENT_SOUL,
-    Realm.SOUL_TRANSFORMATION,
-    Realm.VOID_REFINEMENT,
-    Realm.BODY_INTEGRATION,
-    Realm.GREAT_ASCENSION,
-]
+REALM_ORDER: List[Realm] = [Realm.QI_CONDENSATION]
+
+SECONDS_PER_TICK = 60  # one real minute per tick
+DAYS_PER_YEAR = 365
+STARTING_AGE_YEARS = 10
+REALM_LIFESPAN_YEARS: Dict[Realm, float] = {Realm.QI_CONDENSATION: 120}
 
 
 def default_timestamp() -> int:
     return int(time.time())
+
+
+def default_birthday() -> int:
+    # Players begin at 10 years old; one tick (60 seconds) counts as one in-game day.
+    return int(time.time()) - int(STARTING_AGE_YEARS * DAYS_PER_YEAR * SECONDS_PER_TICK)
 
 
 @dataclass
@@ -140,7 +134,7 @@ class Player:
     user_id: int
     name: str
     created_at: int = field(default_factory=default_timestamp)
-    birthday: int = field(default_factory=default_timestamp)
+    birthday: int = field(default_factory=default_birthday)
     stats: PlayerStats = field(default_factory=PlayerStats)
     cultivation: CultivationProgress = field(default_factory=CultivationProgress)
     inventory: List[str] = field(default_factory=list)
@@ -151,10 +145,17 @@ class Player:
 
     def age_years(self, now: int | None = None) -> float:
         now = now or int(time.time())
-        return (now - self.birthday) / (60 * 60 * 24 * 365)
+        days_lived = max(now - self.birthday, 0) / SECONDS_PER_TICK
+        return days_lived / DAYS_PER_YEAR
+
+    def lifespan_years(self) -> float:
+        return REALM_LIFESPAN_YEARS.get(self.cultivation.realm, REALM_LIFESPAN_YEARS[Realm.QI_CONDENSATION])
+
+    def remaining_lifespan_years(self, now: int | None = None) -> float:
+        return max(self.lifespan_years() - self.age_years(now), 0.0)
 
     def apply_ticks(self, ticks: int) -> List[str]:
-        self.stats.hours_cultivated += ticks / 60
+        self.stats.hours_cultivated += ticks * 24
         logs = self.cultivation.add_exp(ticks)
         for note in logs:
             lowered = note.lower()
@@ -162,10 +163,6 @@ class Player:
                 self.stats.tribulations_survived += 1
         self.last_tick_timestamp += ticks * 60
         return logs
-
-    def record_travel(self, distance: int, destination: str) -> str:
-        self.stats.steps_travelled += distance
-        return f"Travelled {distance} li toward {destination}."
 
     def to_dict(self) -> Dict:
         return dataclasses.asdict(self)
@@ -176,7 +173,7 @@ class Player:
             user_id=data["user_id"],
             name=data.get("name", "Unnamed"),
             created_at=data.get("created_at", default_timestamp()),
-            birthday=data.get("birthday", default_timestamp()),
+            birthday=data.get("birthday", default_birthday()),
             stats=PlayerStats(**data.get("stats", {})),
             cultivation=CultivationProgress(**data.get("cultivation", {})),
             inventory=list(data.get("inventory", [])),

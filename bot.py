@@ -2,7 +2,6 @@ import logging
 import os
 import time
 from pathlib import Path
-from random import randint
 from typing import Dict, List, Optional
 
 import discord
@@ -81,7 +80,7 @@ PROFILE_SUBTABS = {
     ],
     "statistics": [
         discord.SelectOption(label="Battle", value="battle", description="Combat records"),
-        discord.SelectOption(label="Journey", value="journey", description="Travel and time"),
+        discord.SelectOption(label="Longevity", value="longevity", description="Age and lifespan"),
     ],
     "cultivation": [
         discord.SelectOption(label="Breakthroughs", value="breakthroughs", description="Realm and stage progress"),
@@ -106,18 +105,6 @@ class MainMenuView(discord.ui.View):
         await interaction.response.send_message(
             embed=build_profile_embed(player, "overview", None),
             view=ProfileView(self.service, player),
-            ephemeral=True,
-        )
-
-    @discord.ui.button(label="Travel", style=discord.ButtonStyle.success)
-    async def travel_button(self, interaction: discord.Interaction, _: discord.ui.Button):
-        player = self.service.get_player(interaction.user)
-        await interaction.response.send_message(
-            embed=discord.Embed(
-                title="Choose a destination",
-                description="Step onto the path. Distance travelled is recorded even while cultivating.",
-            ),
-            view=TravelView(self.service, player),
             ephemeral=True,
         )
 
@@ -189,57 +176,18 @@ class ProfileView(discord.ui.View):
             self.current_subtab = None
 
 
-class DestinationSelect(discord.ui.Select):
-    def __init__(self, view: "TravelView"):
-        options = [
-            discord.SelectOption(label="Cloudy Ridge", value="Cloudy Ridge"),
-            discord.SelectOption(label="Spirit River", value="Spirit River"),
-            discord.SelectOption(label="Ancient Battlefield", value="Ancient Battlefield"),
-            discord.SelectOption(label="Sect Library", value="Sect Library"),
-        ]
-        super().__init__(placeholder="Pick a destination", options=options)
-        self.travel_view = view
-
-    async def callback(self, interaction: discord.Interaction):
-        self.travel_view.destination = self.values[0]
-        await interaction.response.edit_message(embed=self.travel_view.status_embed(), view=self.travel_view)
-
-
-class TravelView(discord.ui.View):
-    def __init__(self, service: PlayerService, player: Player):
-        super().__init__(timeout=120)
-        self.service = service
-        self.player = player
-        self.destination: str = "Cloudy Ridge"
-        self.add_item(DestinationSelect(self))
-
-    def status_embed(self) -> discord.Embed:
-        embed = discord.Embed(
-            title="Travelling",
-            description=f"Destination: **{self.destination}**\nSteps taken: **{self.player.stats.steps_travelled}**",
-        )
-        embed.set_footer(text="Travel increases journey statistics.")
-        return embed
-
-    @discord.ui.button(label="Embark", style=discord.ButtonStyle.primary)
-    async def embark(self, interaction: discord.Interaction, _: discord.ui.Button):
-        distance = randint(10, 50)
-        note = self.player.record_travel(distance, self.destination)
-        self.service.save()
-        embed = self.status_embed()
-        embed.add_field(name="Journey", value=note, inline=False)
-        await interaction.response.edit_message(embed=embed, view=self)
-
-
 def build_profile_embed(player: Player, tab: str, subtab: Optional[str]) -> discord.Embed:
     embed = discord.Embed(title=f"{player.name}'s Profile", colour=discord.Colour.blue())
-    embed.set_footer(text="Cultivation advances every 60 seconds.")
+    embed.set_footer(text="One in-game day passes every 60 seconds.")
     now = int(time.time())
     age_years = player.age_years(now)
+    lifespan_years = player.lifespan_years()
+    remaining_life = player.remaining_lifespan_years(now)
     cultivation = player.cultivation
     if tab == "overview":
         embed.description = (
             f"Age: **{age_years:.2f}** years\n"
+            f"Lifespan: **{remaining_life:.2f}/{lifespan_years:.0f}** years remaining\n"
             f"Birthday: <t:{player.birthday}:D>\n"
             f"Cultivation: **{cultivation.stage.value} {cultivation.realm.value}**\n"
             f"Progress: {cultivation.exp:.0f}/{cultivation.required_exp():.0f} exp"
@@ -256,8 +204,16 @@ def build_profile_embed(player: Player, tab: str, subtab: Optional[str]) -> disc
             embed.add_field(name="Next tribulation", value=f"{ticks_needed:.1f} ticks until chance to break through.", inline=False)
             embed.add_field(name="Realms", value=", ".join(realm.value for realm in REALM_ORDER), inline=False)
         elif subtab == "rate":
-            hours = ticks_needed / 60 if ticks_needed != float("inf") else float("inf")
-            embed.add_field(name="Time until stage up", value=f"~{hours:.2f} hours at current rate." if hours != float("inf") else "Blocked; increase cultivation rate.", inline=False)
+            days = ticks_needed if ticks_needed != float("inf") else float("inf")
+            embed.add_field(
+                name="Time until stage up",
+                value=(
+                    f"~{days:.0f} days at current rate."
+                    if days != float("inf")
+                    else "Blocked; increase cultivation rate."
+                ),
+                inline=False,
+            )
             embed.add_field(name="Tribulations survived", value=str(player.stats.tribulations_survived), inline=False)
     elif tab == "skills":
         sub = subtab or "combat"
@@ -292,7 +248,11 @@ def build_profile_embed(player: Player, tab: str, subtab: Optional[str]) -> disc
             embed.add_field(name="Tribulations survived", value=str(stats.tribulations_survived), inline=True)
         else:
             embed.add_field(name="Hours cultivating", value=f"{stats.hours_cultivated:.2f}", inline=True)
-            embed.add_field(name="Steps travelled", value=str(stats.steps_travelled), inline=True)
+            embed.add_field(
+                name="Lifespan remaining",
+                value=f"{remaining_life:.2f}/{lifespan_years:.0f} years",
+                inline=True,
+            )
     return embed
 
 
