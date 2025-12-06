@@ -409,20 +409,12 @@ def build_profile_embed(player: Player, tab: str, subtab: Optional[str]) -> disc
     remaining_life = player.remaining_lifespan_years(now)
     cultivation = player.cultivation
     if tab == "overview":
-        bar_length = 20
-        required_exp = cultivation.required_exp()
-        ratio = cultivation.exp / required_exp if required_exp else 0.0
-        clamped_ratio = max(0.0, min(ratio, 1.0))
-        filled = int(round(clamped_ratio * bar_length))
-        progress_percent = max(0.0, min(ratio * 100, 100.0))
-        progress_bar = "▓" * filled + "░" * (bar_length - filled)
         embed.description = (
             f"Age: **{age_years:.2f}** years\n"
             f"Lifespan: **{remaining_life:.2f}/{lifespan_years:.0f}** years remaining\n"
             f"Birthday: <t:{player.birthday}:D>\n"
             f"Cultivation: **{cultivation.stage.value} {cultivation.realm.value}**\n"
-            f"Progress: {cultivation.exp:.0f}/{required_exp:.0f}\n"
-            f"{progress_bar} {progress_percent:.0f}%"
+            f"Progress: {cultivation.exp:.0f}/{cultivation.required_exp():.0f} exp"
         )
     elif tab == "cultivation":
         ticks_needed = cultivation.ticks_until_breakthrough()
@@ -499,7 +491,7 @@ def render_minimap(player: Player, zone: Zone) -> str:
         for x in range(width):
             global_x = start_x + x
             global_y = start_y + y
-            row.append("🧭" if (global_x, global_y) == (player.position_x, player.position_y) else "▫️")
+            row.append("P" if (global_x, global_y) == (player.position_x, player.position_y) else ".")
         grid.append("".join(row))
     return "\n".join(grid)
 
@@ -515,7 +507,7 @@ def build_travel_embed(player: Player, world: World, zone: Zone, world_service: 
         inline=False,
     )
     minimap = render_minimap(player, zone)
-    embed.description = minimap
+    embed.description = f"```\n{minimap}\n```"
     return embed
 
 
