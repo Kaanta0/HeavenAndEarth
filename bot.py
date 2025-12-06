@@ -615,12 +615,13 @@ async def send_travel_panel(
 
 
 class HeavenAndEarthBot(commands.Bot):
-    def __init__(self, **kwargs):
+    def __init__(self, *, sync_guild_id: Optional[int] = None, **kwargs):
         intents = discord.Intents.default()
-        intents.message_content = False
+        intents.message_content = True
         super().__init__(command_prefix=commands.when_mentioned_or("!"), intents=intents, **kwargs)
         self.worlds = WorldService()
         self.service = PlayerService(self.worlds)
+        self.sync_guild_id = sync_guild_id
 
     async def setup_hook(self) -> None:
         self.worlds.load()
@@ -629,7 +630,14 @@ class HeavenAndEarthBot(commands.Bot):
         for note in offline_logs:
             logging.info("%s", note)
         self.tick_loop.start()
-        await self.tree.sync()
+        if self.sync_guild_id:
+            guild = discord.Object(id=self.sync_guild_id)
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            logging.info("Synced %s commands to guild %s", len(synced), self.sync_guild_id)
+        else:
+            synced = await self.tree.sync()
+            logging.info("Synced %s global commands", len(synced))
 
     async def on_ready(self):
         logging.info("Logged in as %s", self.user)
@@ -646,7 +654,15 @@ class HeavenAndEarthBot(commands.Bot):
         await self.wait_until_ready()
 
 
-bot = HeavenAndEarthBot()
+sync_guild_id: Optional[int] = None
+sync_guild_env = os.getenv("DISCORD_GUILD_ID")
+if sync_guild_env:
+    try:
+        sync_guild_id = int(sync_guild_env)
+    except ValueError:
+        logging.warning("Invalid DISCORD_GUILD_ID provided; falling back to global command sync")
+
+bot = HeavenAndEarthBot(sync_guild_id=sync_guild_id)
 
 
 @bot.tree.command(name="main", description="Open the main menu for Heaven and Earth")
