@@ -491,8 +491,9 @@ def build_profile_embed(
             f"Birthday: {calendar.format_date(player.birthday)}\n\n"
             "**__CULTIVATION__**\n"
             f"Realm: {cultivation.realm.value}\n"
-            f"Stage: {cultivation.stage_label()}\n\n"
-            f"Progress: {cultivation.exp:.0f}/{required_exp:.0f}\n"
+            f"Stage: {cultivation.stage_label()}\n"
+            f"Rate: {cultivation.cultivation_rate:.1f} qi/day\n\n"
+            f"Progress: {cultivation.exp:.0f}/{required_exp:.0f} qi\n"
             f"{progress_bar} {progress_percent:.0f}%"
         )
     elif tab == "cultivation":
@@ -500,11 +501,11 @@ def build_profile_embed(
         embed.description = (
             f"Realm: **{cultivation.realm.value}**\n"
             f"Stage: **{cultivation.stage_label()}**\n"
-            f"Current exp: **{cultivation.exp:.1f}/{cultivation.required_exp():.1f}**\n"
-            f"Rate: **{cultivation.cultivation_rate:.1f} exp/tick**"
+            f"Current qi: **{cultivation.exp:.1f}/{cultivation.required_exp():.1f}**\n"
+            f"Rate: **{cultivation.cultivation_rate:.1f} qi/day**"
         )
         if subtab == "breakthroughs":
-            embed.add_field(name="Next tribulation", value=f"{ticks_needed:.1f} ticks until chance to break through.", inline=False)
+            embed.add_field(name="Next tribulation", value=f"{ticks_needed:.1f} days until chance to break through.", inline=False)
             embed.add_field(name="Realms", value=", ".join(realm.value for realm in REALM_ORDER), inline=False)
         elif subtab == "rate":
             days = ticks_needed if ticks_needed != float("inf") else float("inf")
