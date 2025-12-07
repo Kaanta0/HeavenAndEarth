@@ -10,7 +10,14 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from heaven_and_earth.calendar import CalendarRepository, GameCalendar
-from heaven_and_earth.models import Player, REALM_ORDER, SECONDS_PER_TICK, World, Zone, slugify
+from heaven_and_earth.models import (
+    Player,
+    REALM_ORDER,
+    SECONDS_PER_TICK,
+    World,
+    Zone,
+    slugify,
+)
 from heaven_and_earth.storage import PlayerRepository, WorldRepository
 
 logging.basicConfig(level=logging.INFO)
@@ -495,6 +502,41 @@ def build_profile_embed(
             f"Rate: {cultivation.cultivation_rate:.1f} qi/day\n\n"
             f"Progress: {cultivation.exp:.0f}/{required_exp:.0f} qi\n"
             f"{progress_bar} {progress_percent:.0f}%"
+        )
+        talents = player.talents
+        effective_stats = player.effective_stats()
+        sub_stats = player.sub_stats()
+        embed.add_field(
+            name="Talents",
+            value=(
+                f"Physical Strength: {talents.physical_strength:.0f}%\n"
+                f"Constitution: {talents.constitution:.0f}%\n"
+                f"Agility: {talents.agility:.0f}%\n"
+                f"Spiritual Power: {talents.spiritual_power:.0f}%\n"
+                f"Perception: {talents.perception:.0f}%"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Stats",
+            value=(
+                f"Physical Strength: {effective_stats.physical_strength:.1f}\n"
+                f"Constitution: {effective_stats.constitution:.1f}\n"
+                f"Agility: {effective_stats.agility:.1f}\n"
+                f"Spiritual Power: {effective_stats.spiritual_power:.1f}\n"
+                f"Perception: {effective_stats.perception:.1f}"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Sub-Stats",
+            value=(
+                f"HP: {sub_stats.hp:.0f}\n"
+                f"Defense: {sub_stats.defense:.0f}\n"
+                f"ATK Speed: {sub_stats.attack_speed:.0f}\n"
+                f"Evasion: {sub_stats.evasion:.0f}"
+            ),
+            inline=False,
         )
     elif tab == "cultivation":
         ticks_needed = cultivation.ticks_until_breakthrough()
