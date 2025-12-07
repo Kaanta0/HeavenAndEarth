@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass, field
 from random import random
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, ClassVar, Dict, List
 import re
 
 if TYPE_CHECKING:  # pragma: no cover - imported only for type hints
@@ -54,8 +54,11 @@ def default_birthday() -> int:
 class CultivationProgress:
     realm: Realm = Realm.QI_CONDENSATION
     stage: Stage = Stage.INITIAL
+    layer: int = 1
     exp: float = 0.0
     cultivation_rate: float = 1.0  # percent per tick -> exp per tick
+
+    max_qi_layers: ClassVar[int] = 15
 
     def __post_init__(self) -> None:
         if isinstance(self.realm, str):
@@ -68,8 +71,15 @@ class CultivationProgress:
                 self.stage = Stage(self.stage)
             except ValueError:
                 self.stage = Stage.INITIAL
+        try:
+            self.layer = int(self.layer)
+        except (TypeError, ValueError):
+            self.layer = 1
+        self.layer = min(max(self.layer, 1), self.max_qi_layers)
 
     def ticks_until_breakthrough(self) -> float:
+        if self.is_maxed_out():
+            return float("inf")
         remaining = max(self.required_exp() - self.exp, 0)
         if self.cultivation_rate <= 0:
             return float("inf")
@@ -77,11 +87,15 @@ class CultivationProgress:
 
     def required_exp(self) -> float:
         base = (REALM_ORDER.index(self.realm) + 1) * 100
+        layer_multiplier = max(self.layer, 1)
         stage_multiplier = (STAGE_ORDER.index(self.stage) + 1)
-        return base * stage_multiplier
+        return base * layer_multiplier * stage_multiplier
 
     def add_exp(self, ticks: int) -> List[str]:
         log: List[str] = []
+        if self.is_maxed_out():
+            self.exp = min(self.exp + self.cultivation_rate * ticks, self.required_exp())
+            return log
         self.exp += self.cultivation_rate * ticks
         while self.exp >= self.required_exp():
             self.exp -= self.required_exp()
@@ -92,7 +106,11 @@ class CultivationProgress:
         current_stage_index = STAGE_ORDER.index(self.stage)
         if current_stage_index + 1 < len(STAGE_ORDER):
             self.stage = STAGE_ORDER[current_stage_index + 1]
-            return f"Advanced to {self.stage.value} stage of {self.realm.value}."
+            return f"Advanced to {self.stage_label()} of {self.realm.value}."
+        if self.realm == Realm.QI_CONDENSATION and self.layer < self.max_qi_layers:
+            self.layer += 1
+            self.stage = Stage.INITIAL
+            return f"Advanced to {self.stage_label()} of {self.realm.value}."
         return self.breakthrough_realm()
 
     def breakthrough_realm(self) -> str:
@@ -104,7 +122,19 @@ class CultivationProgress:
             self.stage = Stage.INITIAL
             return outcome
         self.stage = Stage.PEAK
-        return "Reached the pinnacle; no further breakthroughs possible."
+        return f"Reached the pinnacle of {self.realm.value} (Peak {self.layer_ordinal()} layer)."
+
+    def layer_ordinal(self) -> str:
+        suffix = "th"
+        if not 10 <= self.layer % 100 <= 20:
+            suffix = {1: "st", 2: "nd", 3: "rd"}.get(self.layer % 10, "th")
+        return f"{self.layer}{suffix}"
+
+    def stage_label(self) -> str:
+        return f"{self.stage.value} {self.layer_ordinal()} layer"
+
+    def is_maxed_out(self) -> bool:
+        return self.realm == Realm.QI_CONDENSATION and self.layer >= self.max_qi_layers and self.stage == Stage.PEAK
 
 
 @dataclass
