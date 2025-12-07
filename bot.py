@@ -461,7 +461,7 @@ def build_profile_embed(
 
     day_seconds = SECONDS_PER_TICK / effective_flow if effective_flow > 0 else SECONDS_PER_TICK
 
-    embed = discord.Embed(title="**__Profile__**", colour=discord.Colour.yellow())
+    embed = discord.Embed(title="**__PROFILE__**", colour=discord.Colour.yellow())
     if avatar_url:
         embed.set_thumbnail(url=avatar_url)
     if day_seconds < 1:
@@ -482,12 +482,16 @@ def build_profile_embed(
         progress_percent = max(0.0, min(ratio * 100, 100.0))
         progress_bar = "▓" * filled + "░" * (bar_length - filled)
         embed.description = (
-            f"*{calendar.format_date(now)}*\n"
-            f"Currently at {world_name} (world) | {zone_name} (zone)\n\n"
+            "**__DATE AND LOCATION__**\n"
+            f"{calendar.format_date(now)}\n"
+            f"Currently at {world_name} | {zone_name}\n\n"
+            "**__AGE AND LIFESPAN__**\n"
             f"Age: {age_years:.2f} years old\n"
             f"Lifespan: {remaining_life:.2f} years remaining of {lifespan_years:.0f}\n"
             f"Birthday: {calendar.format_date(player.birthday)}\n\n"
-            f"Cultivation: {cultivation.stage.value} {cultivation.realm.value}\n"
+            "**__CULTIVATION__**\n"
+            f"Realm: {cultivation.realm.value}\n"
+            f"Stage: {cultivation.stage.value}\n\n"
             f"Progress: {cultivation.exp:.0f}/{required_exp:.0f}\n"
             f"{progress_bar} {progress_percent:.0f}%"
         )
