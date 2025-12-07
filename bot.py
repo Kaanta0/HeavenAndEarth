@@ -464,7 +464,11 @@ def build_profile_embed(
     embed = discord.Embed(title="**__Profile__**", colour=discord.Colour.yellow())
     if avatar_url:
         embed.set_thumbnail(url=avatar_url)
-    embed.set_footer(text=f"One in-game day passes every {day_seconds:.0f} seconds.")
+    if day_seconds < 1:
+        day_length_text = f"{day_seconds * 1000:.0f} milliseconds"
+    else:
+        day_length_text = f"{day_seconds:.0f} seconds"
+    embed.set_footer(text=f"One in-game day passes every {day_length_text}.")
     age_years = player.age_years(calendar, now)
     lifespan_years = player.lifespan_years()
     remaining_life = player.remaining_lifespan_years(calendar, now)
