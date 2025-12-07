@@ -491,7 +491,7 @@ def build_profile_embed(
             f"Birthday: {calendar.format_date(player.birthday)}\n\n"
             "**__CULTIVATION__**\n"
             f"Realm: {cultivation.realm.value}\n"
-            f"Stage: {cultivation.stage.value}\n\n"
+            f"Stage: {cultivation.stage_label()}\n\n"
             f"Progress: {cultivation.exp:.0f}/{required_exp:.0f}\n"
             f"{progress_bar} {progress_percent:.0f}%"
         )
@@ -499,7 +499,7 @@ def build_profile_embed(
         ticks_needed = cultivation.ticks_until_breakthrough()
         embed.description = (
             f"Realm: **{cultivation.realm.value}**\n"
-            f"Stage: **{cultivation.stage.value}**\n"
+            f"Stage: **{cultivation.stage_label()}**\n"
             f"Current exp: **{cultivation.exp:.1f}/{cultivation.required_exp():.1f}**\n"
             f"Rate: **{cultivation.cultivation_rate:.1f} exp/tick**"
         )
