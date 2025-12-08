@@ -19,7 +19,7 @@ A xianxia cultivation-themed Discord RPG bot featuring automated time progressio
 ## Menus and Views
 - **Main menu**: Entry point to the profile.
 - **Profile tabs**:
-  - *Overview*: Age (with birthday timestamp), remaining lifespan, current realm/stage, and cultivation progress.
+  - *Overview*: Age (with birthday timestamp), remaining lifespan, and current location.
   - *Cultivation*: Realms and stages with exp totals, ticks/time until breakthrough, and tribulation survivals.
   - *Skills*: Placeholder descriptions for combat/support/movement arts.
   - *Inventory*: Satchel and treasure sections.
