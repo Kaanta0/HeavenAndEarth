@@ -14,7 +14,6 @@ if TYPE_CHECKING:  # pragma: no cover - imported only for type hints
 
 class Realm(str, Enum):
     QI_CONDENSATION = "Qi Condensation"
-    FOUNDATION_ESTABLISHMENT = "Foundation Establishment"
 
 
 class Stage(str, Enum):
@@ -34,15 +33,12 @@ STAGE_ORDER: List[Stage] = [
 ]
 
 
-REALM_ORDER: List[Realm] = [Realm.QI_CONDENSATION, Realm.FOUNDATION_ESTABLISHMENT]
+REALM_ORDER: List[Realm] = [Realm.QI_CONDENSATION]
 
 SECONDS_PER_TICK = 60  # one real minute per tick
 DAYS_PER_YEAR = 365
 STARTING_AGE_YEARS = 10
-REALM_LIFESPAN_YEARS: Dict[Realm, float] = {
-    Realm.QI_CONDENSATION: 120,
-    Realm.FOUNDATION_ESTABLISHMENT: 300,
-}
+REALM_LIFESPAN_YEARS: Dict[Realm, float] = {Realm.QI_CONDENSATION: 120}
 
 
 class QiType(str, Enum):
@@ -112,7 +108,6 @@ class CultivationProgress:
     qi_type: QiType = QiType.SPIRITUAL
     qi_quality: QiQuality = QiQuality.FAINT
     cultivation_rate: float = 1.0  # percent per tick -> exp per tick
-    foundation_progress: float = 0.0  # 0-1 progress toward guaranteed Foundation breakthrough
 
     max_qi_layers: ClassVar[int] = 15
 
@@ -144,7 +139,6 @@ class CultivationProgress:
                 self.qi_quality = QiQuality.FAINT
         self._upgrade_qi_quality_for_layer()
         self.refresh_cultivation_rate()
-        self.foundation_progress = max(0.0, min(float(self.foundation_progress), 1.0))
 
     def refresh_cultivation_rate(self) -> None:
         self.cultivation_rate = self.qi_gathering_rate()
@@ -174,7 +168,6 @@ class CultivationProgress:
 
     def add_exp(self, ticks: int) -> List[str]:
         log: List[str] = []
-        self._advance_foundation_progress(ticks)
         if self.is_maxed_out():
             self.exp = min(self.exp + self.cultivation_rate * ticks, self.required_exp())
             return log
@@ -211,36 +204,9 @@ class CultivationProgress:
             outcome = tribulation.resolve()
             self.realm = tribulation.target_realm
             self.stage = Stage.INITIAL
-            self.layer = 1
-            self.exp = 0.0
-            self.foundation_progress = 0.0
             return outcome
         self.stage = Stage.PEAK
         return f"Reached the pinnacle of {self.realm.value} (Peak {self.layer_ordinal()} layer)."
-
-    def can_attempt_foundation_breakthrough(self) -> bool:
-        return self.realm == Realm.QI_CONDENSATION and self.is_maxed_out()
-
-    def foundation_breakthrough_chance(self) -> float:
-        if not self.can_attempt_foundation_breakthrough():
-            return 0.0
-        base_chance = 0.10
-        bonus = 0.90 * max(0.0, min(self.foundation_progress, 1.0))
-        return min(base_chance + bonus, 1.0)
-
-    def attempt_foundation_breakthrough(self) -> str:
-        if not self.can_attempt_foundation_breakthrough():
-            return "You are not ready to break through yet."
-        roll = random()
-        chance = self.foundation_breakthrough_chance()
-        if roll <= chance:
-            self.realm = Realm.FOUNDATION_ESTABLISHMENT
-            self.stage = Stage.INITIAL
-            self.layer = 1
-            self.exp = 0.0
-            self.foundation_progress = 0.0
-            return "Your foundation solidifies—breakthrough to Foundation Establishment succeeded!"
-        return "The foundation shudders but holds; adjust your state and try again."
 
     def layer_ordinal(self) -> str:
         suffix = "th"
@@ -253,13 +219,6 @@ class CultivationProgress:
 
     def is_maxed_out(self) -> bool:
         return self.realm == Realm.QI_CONDENSATION and self.layer >= self.max_qi_layers and self.stage == Stage.PEAK
-
-    def _advance_foundation_progress(self, ticks: int) -> None:
-        if not self.can_attempt_foundation_breakthrough() or ticks <= 0:
-            return
-        ticks_per_full_progress = DAYS_PER_YEAR * 5
-        increment = ticks / ticks_per_full_progress
-        self.foundation_progress = min(1.0, self.foundation_progress + increment)
 
 
 @dataclass
