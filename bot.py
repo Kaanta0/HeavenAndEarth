@@ -506,50 +506,34 @@ def build_profile_embed(
         )
     elif tab == "stats":
         embed.add_field(
-            name="**TALENT**",
+            name="Talents",
             value=(
-                "Physical Strength:\n"
-                "**86%** (Average)\n"
-                "Constitution:\n"
-                "**78%** (Average)\n"
-                "Agility:\n"
-                "**73%** (Trash)\n"
-                "Spiritual Power:\n"
-                "**86%** (Average)\n"
-                "Perception:\n"
-                "**57%** (Trash)"
+                "Physical Strength: 86% (Average)\n"
+                "Constitution: 78% (Average)\n"
+                "Agility: 73% (Trash)\n"
+                "Spiritual Power: 86% (Average)\n"
+                "Perception: 57% (Trash)"
             ),
             inline=False,
         )
-        embed.add_field(name="\u200b", value="\u200b", inline=False)
         embed.add_field(
-            name="**STATS**",
+            name="Stats",
             value=(
-                "Physical Strength:\n"
-                "8.6\n"
-                "Constitution:\n"
-                "7.8\n"
-                "Agility:\n"
-                "7.3\n"
-                "Spiritual Power:\n"
-                "8.6\n"
-                "Perception:\n"
-                "5.7"
+                "Physical Strength: 8.6\n"
+                "Constitution: 7.8\n"
+                "Agility: 7.3\n"
+                "Spiritual Power: 8.6\n"
+                "Perception: 5.7"
             ),
             inline=False,
         )
-        embed.add_field(name="\u200b", value="\u200b", inline=False)
         embed.add_field(
-            name="**SUB-STATS**",
+            name="Sub-Stats",
             value=(
-                "HP:\n"
-                "62\n"
-                "Defense:\n"
-                "12\n"
-                "ATK Speed:\n"
-                "73\n"
-                "Evasion:\n"
-                "15"
+                "HP: 62\n"
+                "Defense: 12\n"
+                "ATK Speed: 73\n"
+                "Evasion: 15"
             ),
             inline=False,
         )
