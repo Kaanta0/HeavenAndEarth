@@ -14,6 +14,7 @@ from heaven_and_earth.models import (
     Player,
     REALM_ORDER,
     SECONDS_PER_TICK,
+    TalentSheet,
     World,
     Zone,
     slugify,
@@ -505,38 +506,49 @@ def build_profile_embed(
             f"{progress_bar} {progress_percent:.0f}%"
         )
     elif tab == "stats":
-        embed.add_field(
-            name="Talents",
-            value=(
-                "Physical Strength: 86% (Average)\n"
-                "Constitution: 78% (Average)\n"
-                "Agility: 73% (Trash)\n"
-                "Spiritual Power: 86% (Average)\n"
-                "Perception: 57% (Trash)"
-            ),
-            inline=False,
+        talents = player.talents
+        effective_stats = player.effective_stats()
+        sub_stats = player.sub_stats()
+
+        talents_block = (
+            "**TALENT**\n"
+            "Physical Strength\n"
+            f"**{talents.physical_strength:.0f}%** ({TalentSheet.quality(talents.physical_strength)})\n"
+            "Constitution\n"
+            f"**{talents.constitution:.0f}%** ({TalentSheet.quality(talents.constitution)})\n"
+            "Agility\n"
+            f"**{talents.agility:.0f}%** ({TalentSheet.quality(talents.agility)})\n"
+            "Spiritual Power\n"
+            f"**{talents.spiritual_power:.0f}%** ({TalentSheet.quality(talents.spiritual_power)})\n"
+            "Perception\n"
+            f"**{talents.perception:.0f}%** ({TalentSheet.quality(talents.perception)})"
         )
-        embed.add_field(
-            name="Stats",
-            value=(
-                "Physical Strength: 8.6\n"
-                "Constitution: 7.8\n"
-                "Agility: 7.3\n"
-                "Spiritual Power: 8.6\n"
-                "Perception: 5.7"
-            ),
-            inline=False,
+
+        stats_and_sub_stats_block = (
+            "**STATS**\n"
+            "Physical Strength\n"
+            f"**{effective_stats.physical_strength:.1f}**\n"
+            "Constitution\n"
+            f"**{effective_stats.constitution:.1f}**\n"
+            "Agility\n"
+            f"**{effective_stats.agility:.1f}**\n"
+            "Spiritual Power\n"
+            f"**{effective_stats.spiritual_power:.1f}**\n"
+            "Perception\n"
+            f"**{effective_stats.perception:.1f}**\n\n"
+            "**SUB-STATS**\n"
+            "Health Points:\n"
+            f"**{sub_stats.hp:.0f}**\n"
+            "Defense\n"
+            f"**{sub_stats.defense:.0f}**\n"
+            "Attack Speed\n"
+            f"**{sub_stats.attack_speed:.0f}**\n"
+            "Evasion\n"
+            f"**{sub_stats.evasion:.0f}**"
         )
-        embed.add_field(
-            name="Sub-Stats",
-            value=(
-                "HP: 62\n"
-                "Defense: 12\n"
-                "ATK Speed: 73\n"
-                "Evasion: 15"
-            ),
-            inline=False,
-        )
+
+        embed.add_field(name="\u200b", value=talents_block, inline=True)
+        embed.add_field(name="\u200b", value=stats_and_sub_stats_block, inline=True)
     elif tab == "cultivation":
         ticks_needed = cultivation.ticks_until_breakthrough()
         embed.description = (
