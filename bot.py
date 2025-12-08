@@ -508,32 +508,49 @@ def build_profile_embed(
         embed.add_field(
             name="Talents",
             value=(
-                "Physical Strength: 86% (Average)\n"
-                "Constitution: 78% (Average)\n"
-                "Agility: 73% (Trash)\n"
-                "Spiritual Power: 86% (Average)\n"
-                "Perception: 57% (Trash)"
+                "**TALENT**\n"
+                "Physical Strength\n"
+                "**86%** (Average)\n"
+                "Constitution\n"
+                "**78%** (Average)\n"
+                "Agility\n"
+                "**73%** (Trash)\n"
+                "Spiritual Power\n"
+                "**86%** (Average)\n"
+                "Perception\n"
+                "**57%** (Trash)"
             ),
             inline=False,
         )
         embed.add_field(
             name="Stats",
             value=(
-                "Physical Strength: 8.6\n"
-                "Constitution: 7.8\n"
-                "Agility: 7.3\n"
-                "Spiritual Power: 8.6\n"
-                "Perception: 5.7"
+                "**STATS**\n"
+                "Physical Strength\n"
+                "**8.6**\n"
+                "Constitution\n"
+                "**7.8**\n"
+                "Agility\n"
+                "**7.3**\n"
+                "Spiritual Power\n"
+                "**8.6**\n"
+                "Perception\n"
+                "**5.7**"
             ),
             inline=False,
         )
         embed.add_field(
             name="Sub-Stats",
             value=(
-                "HP: 62\n"
-                "Defense: 12\n"
-                "ATK Speed: 73\n"
-                "Evasion: 15"
+                "**SUB-STATS**\n"
+                "Health Points:\n"
+                "**62**\n"
+                "Defense\n"
+                "**12**\n"
+                "Attack Speed\n"
+                "**73**\n"
+                "Evasion\n"
+                "**15**"
             ),
             inline=False,
         )
