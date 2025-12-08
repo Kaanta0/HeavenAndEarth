@@ -586,44 +586,60 @@ def build_profile_embed(
         effective_stats = player.effective_stats()
         sub_stats = player.sub_stats()
 
-        talents_block = (
-            "**TALENT**\n"
-            "Physical Strength\n"
-            f"**{talents.physical_strength:.0f}%** ({TalentSheet.quality(talents.physical_strength)})\n"
-            "Constitution\n"
-            f"**{talents.constitution:.0f}%** ({TalentSheet.quality(talents.constitution)})\n"
-            "Agility\n"
-            f"**{talents.agility:.0f}%** ({TalentSheet.quality(talents.agility)})\n"
-            "Spiritual Power\n"
-            f"**{talents.spiritual_power:.0f}%** ({TalentSheet.quality(talents.spiritual_power)})\n"
-            "Perception\n"
-            f"**{talents.perception:.0f}%** ({TalentSheet.quality(talents.perception)})"
+        def format_quality(value: float) -> str:
+            quality = TalentSheet.quality(value)
+            color_map = {
+                "Trash": "\u001b[31m",  # Red
+                "Average": "\u001b[33m",  # Yellow
+                "Genius": "\u001b[32m",  # Green
+            }
+            color = color_map.get(quality, "")
+            reset = "\u001b[0m" if color else ""
+            return f"{color}{quality}{reset}"
+
+        def format_talent_entry(label: str, value: float) -> str:
+            return (
+                "```ansi\n"
+                f"{label}\n"
+                f"{value:.0f}% ({format_quality(value)})\n"
+                "```"
+            )
+
+        def format_stat_entry(label: str, value: str) -> str:
+            return (
+                "```\n"
+                f"{label}\n"
+                f"{value}\n"
+                "```"
+            )
+
+        talents_block = "**TALENT**\n" + "\n".join(
+            [
+                format_talent_entry("Physical Strength", talents.physical_strength),
+                format_talent_entry("Constitution", talents.constitution),
+                format_talent_entry("Agility", talents.agility),
+                format_talent_entry("Spiritual Power", talents.spiritual_power),
+                format_talent_entry("Perception", talents.perception),
+            ]
         )
 
-        stats_block = (
-            "**STATS**\n"
-            "Physical Strength\n"
-            f"**{effective_stats.physical_strength:.1f}**\n"
-            "Constitution\n"
-            f"**{effective_stats.constitution:.1f}**\n"
-            "Agility\n"
-            f"**{effective_stats.agility:.1f}**\n"
-            "Spiritual Power\n"
-            f"**{effective_stats.spiritual_power:.1f}**\n"
-            "Perception\n"
-            f"**{effective_stats.perception:.1f}**"
+        stats_block = "**STATS**\n" + "\n".join(
+            [
+                format_stat_entry("Physical Strength", f"{effective_stats.physical_strength:.1f}"),
+                format_stat_entry("Constitution", f"{effective_stats.constitution:.1f}"),
+                format_stat_entry("Agility", f"{effective_stats.agility:.1f}"),
+                format_stat_entry("Spiritual Power", f"{effective_stats.spiritual_power:.1f}"),
+                format_stat_entry("Perception", f"{effective_stats.perception:.1f}"),
+            ]
         )
 
-        sub_stats_block = (
-            "**SUB-STATS**\n"
-            "Health Points:\n"
-            f"**{sub_stats.hp:.0f}**\n"
-            "Defense\n"
-            f"**{sub_stats.defense:.0f}**\n"
-            "Attack Speed\n"
-            f"**{sub_stats.attack_speed:.0f}**\n"
-            "Evasion\n"
-            f"**{sub_stats.evasion:.0f}**"
+        sub_stats_block = "**SUB-STATS**\n" + "\n".join(
+            [
+                format_stat_entry("Health Points", f"{sub_stats.hp:.0f}"),
+                format_stat_entry("Defense", f"{sub_stats.defense:.0f}"),
+                format_stat_entry("Attack Speed", f"{sub_stats.attack_speed:.0f}"),
+                format_stat_entry("Evasion", f"{sub_stats.evasion:.0f}"),
+            ]
         )
 
         embed.add_field(name="\u200b", value=talents_block, inline=True)
