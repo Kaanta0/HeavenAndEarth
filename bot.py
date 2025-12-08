@@ -27,6 +27,41 @@ logging.basicConfig(level=logging.INFO)
 load_dotenv()
 
 
+def format_talents_block(talents: TalentSheet) -> str:
+    def format_quality(value: float) -> str:
+        quality = TalentSheet.quality(value)
+        color_map = {
+            "Trash": "\u001b[31m",  # Red
+            "Average": "\u001b[33m",  # Yellow
+            "Genius": "\u001b[32m",  # Green
+        }
+        color = color_map.get(quality, "")
+        reset = "\u001b[0m" if color else ""
+        return f"{color}{quality}{reset}"
+
+    bold = "\u001b[1m"
+    reset = "\u001b[0m"
+
+    def format_talent_entry(label: str, value: float) -> str:
+        bold_value = f"{bold}{value:.0f}%{reset}"
+        return (
+            "```ansi\n"
+            f"{label}\n"
+            f"{bold_value} ({format_quality(value)})\n"
+            "```"
+        )
+
+    return "**TALENT**\n" + "\n".join(
+        [
+            format_talent_entry("Physical Strength", talents.physical_strength),
+            format_talent_entry("Constitution", talents.constitution),
+            format_talent_entry("Agility", talents.agility),
+            format_talent_entry("Spiritual Power", talents.spiritual_power),
+            format_talent_entry("Perception", talents.perception),
+        ]
+    )
+
+
 class WorldService:
     def __init__(self) -> None:
         self.repo = WorldRepository()
@@ -667,28 +702,8 @@ def build_profile_embed(
         effective_stats = player.effective_stats()
         sub_stats = player.sub_stats()
 
-        def format_quality(value: float) -> str:
-            quality = TalentSheet.quality(value)
-            color_map = {
-                "Trash": "\u001b[31m",  # Red
-                "Average": "\u001b[33m",  # Yellow
-                "Genius": "\u001b[32m",  # Green
-            }
-            color = color_map.get(quality, "")
-            reset = "\u001b[0m" if color else ""
-            return f"{color}{quality}{reset}"
-
         bold = "\u001b[1m"
         reset = "\u001b[0m"
-
-        def format_talent_entry(label: str, value: float) -> str:
-            bold_value = f"{bold}{value:.0f}%{reset}"
-            return (
-                "```ansi\n"
-                f"{label}\n"
-                f"{bold_value} ({format_quality(value)})\n"
-                "```"
-            )
 
         def format_stat_entry(label: str, value: str) -> str:
             bold_value = f"{bold}{value}{reset}"
@@ -699,15 +714,7 @@ def build_profile_embed(
                 "```"
             )
 
-        talents_block = "**TALENT**\n" + "\n".join(
-            [
-                format_talent_entry("Physical Strength", talents.physical_strength),
-                format_talent_entry("Constitution", talents.constitution),
-                format_talent_entry("Agility", talents.agility),
-                format_talent_entry("Spiritual Power", talents.spiritual_power),
-                format_talent_entry("Perception", talents.perception),
-            ]
-        )
+        talents_block = format_talents_block(talents)
 
         stats_block = "**STATS**\n" + "\n".join(
             [
@@ -1300,6 +1307,8 @@ async def register(interaction: discord.Interaction):
         return
     player = bot.service.register(interaction.user)
     avatar_url = interaction.user.display_avatar.url
+    talent_block = format_talents_block(player.talents)
+
     embed = discord.Embed(
         title="__**A NEW CULTIVATOR AWAKENS**__",
         description=(
@@ -1310,6 +1319,7 @@ async def register(interaction: discord.Interaction):
         colour=discord.Colour.green(),
     )
     embed.set_thumbnail(url=avatar_url)
+    embed.add_field(name="Innate Talent", value=talent_block, inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
