@@ -14,6 +14,7 @@ if TYPE_CHECKING:  # pragma: no cover - imported only for type hints
 
 class Realm(str, Enum):
     QI_CONDENSATION = "Qi Condensation"
+    FOUNDATION_ESTABLISHMENT = "Foundation Establishment"
 
 
 class Stage(str, Enum):
@@ -33,12 +34,18 @@ STAGE_ORDER: List[Stage] = [
 ]
 
 
-REALM_ORDER: List[Realm] = [Realm.QI_CONDENSATION]
+REALM_ORDER: List[Realm] = [Realm.QI_CONDENSATION, Realm.FOUNDATION_ESTABLISHMENT]
+
+DAYS_PER_YEAR = 365
+FOUNDATION_YEARS_TO_FILL = 5
+FOUNDATION_FILL_TICKS = DAYS_PER_YEAR * FOUNDATION_YEARS_TO_FILL
 
 SECONDS_PER_TICK = 60  # one real minute per tick
-DAYS_PER_YEAR = 365
 STARTING_AGE_YEARS = 10
-REALM_LIFESPAN_YEARS: Dict[Realm, float] = {Realm.QI_CONDENSATION: 120}
+REALM_LIFESPAN_YEARS: Dict[Realm, float] = {
+    Realm.QI_CONDENSATION: 120,
+    Realm.FOUNDATION_ESTABLISHMENT: 250,
+}
 
 
 class QiType(str, Enum):
@@ -108,6 +115,7 @@ class CultivationProgress:
     qi_type: QiType = QiType.SPIRITUAL
     qi_quality: QiQuality = QiQuality.FAINT
     cultivation_rate: float = 1.0  # percent per tick -> exp per tick
+    foundation_progress: float = 0.0
 
     max_qi_layers: ClassVar[int] = 15
 
@@ -137,6 +145,11 @@ class CultivationProgress:
                 self.qi_quality = QiQuality(self.qi_quality)
             except ValueError:
                 self.qi_quality = QiQuality.FAINT
+        try:
+            self.foundation_progress = float(self.foundation_progress)
+        except (TypeError, ValueError):
+            self.foundation_progress = 0.0
+        self.foundation_progress = min(max(self.foundation_progress, 0.0), 1.0)
         self._upgrade_qi_quality_for_layer()
         self.refresh_cultivation_rate()
 
@@ -153,6 +166,9 @@ class CultivationProgress:
         return False
 
     def ticks_until_breakthrough(self) -> float:
+        if self.foundation_bar_active():
+            remaining_ratio = max(1.0 - self.foundation_progress, 0.0)
+            return remaining_ratio * FOUNDATION_FILL_TICKS
         if self.is_maxed_out():
             return float("inf")
         remaining = max(self.required_exp() - self.exp, 0)
@@ -170,11 +186,19 @@ class CultivationProgress:
         log: List[str] = []
         if self.is_maxed_out():
             self.exp = min(self.exp + self.cultivation_rate * ticks, self.required_exp())
+            log.extend(self.update_foundation_progress(ticks))
             return log
         self.exp += self.cultivation_rate * ticks
         while self.exp >= self.required_exp():
             self.exp -= self.required_exp()
             log.append(self.advance_stage())
+            if self.is_qi_condensation_cap():
+                self.exp = min(self.exp, self.required_exp())
+                break
+            if self.is_maxed_out():
+                self.exp = min(self.exp, self.required_exp())
+                break
+        log.extend(self.update_foundation_progress(ticks))
         return log
 
     def advance_stage(self) -> str:
@@ -186,6 +210,9 @@ class CultivationProgress:
             self.layer += 1
             self.stage = Stage.INITIAL
             return self._handle_layer_advance()
+        if self.is_qi_condensation_cap():
+            self.foundation_progress = max(self.foundation_progress, 0.0)
+            return f"Reached {self.stage_label()} of {self.realm.value}. Foundation bar awakened."
         return self.breakthrough_realm()
 
     def _handle_layer_advance(self) -> str:
@@ -206,7 +233,9 @@ class CultivationProgress:
             self.stage = Stage.INITIAL
             return outcome
         self.stage = Stage.PEAK
-        return f"Reached the pinnacle of {self.realm.value} (Peak {self.layer_ordinal()} layer)."
+        if self.realm == Realm.QI_CONDENSATION:
+            return f"Reached the pinnacle of {self.realm.value} (Peak {self.layer_ordinal()} layer)."
+        return f"Reached the pinnacle of {self.realm.value} (Peak stage)."
 
     def layer_ordinal(self) -> str:
         suffix = "th"
@@ -215,10 +244,57 @@ class CultivationProgress:
         return f"{self.layer}{suffix}"
 
     def stage_label(self) -> str:
-        return f"{self.stage.value} {self.layer_ordinal()} layer"
+        if self.realm == Realm.QI_CONDENSATION:
+            return f"{self.stage.value} {self.layer_ordinal()} layer"
+        return self.stage.value
 
     def is_maxed_out(self) -> bool:
+        final_realm = REALM_ORDER[-1]
+        if self.realm == final_realm:
+            return self.stage == Stage.PEAK
+        return False
+
+    def is_qi_condensation_cap(self) -> bool:
         return self.realm == Realm.QI_CONDENSATION and self.layer >= self.max_qi_layers and self.stage == Stage.PEAK
+
+    def foundation_bar_active(self) -> bool:
+        return self.is_qi_condensation_cap()
+
+    def update_foundation_progress(self, ticks: int) -> List[str]:
+        if not self.foundation_bar_active():
+            return []
+        if self.foundation_progress >= 1.0:
+            return []
+        previous = self.foundation_progress
+        increment = ticks / FOUNDATION_FILL_TICKS
+        self.foundation_progress = min(1.0, self.foundation_progress + increment)
+        if previous < 1.0 and self.foundation_progress >= 1.0:
+            return ["Foundation bar complete—breakthrough chance has reached 100%."]
+        return []
+
+    def breakthrough_chance(self) -> float:
+        if not self.foundation_bar_active():
+            return 0.0
+        base = 0.10
+        bonus = 0.90 * self.foundation_progress
+        return max(0.0, min(base + bonus, 1.0))
+
+    def attempt_foundation_breakthrough(self) -> tuple[bool, str]:
+        if not self.foundation_bar_active():
+            return False, "You are not ready to break through yet."
+        chance = self.breakthrough_chance()
+        if random() <= chance:
+            self.realm = Realm.FOUNDATION_ESTABLISHMENT
+            self.stage = Stage.INITIAL
+            self.layer = 1
+            self.exp = 0.0
+            self.foundation_progress = 0.0
+            return True, "Breakthrough successful! You have reached Foundation Establishment."
+        self.stage = Stage.LATE
+        self.layer = self.max_qi_layers
+        self.exp = 0.0
+        self.foundation_progress = 0.0
+        return False, "Breakthrough failed. Your foundation wavers; you return to Late 15th layer Qi Condensation."
 
 
 @dataclass

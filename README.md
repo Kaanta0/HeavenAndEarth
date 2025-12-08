@@ -7,7 +7,7 @@ A xianxia cultivation-themed Discord RPG bot featuring automated time progressio
 - **Registration gate**: `/register` must be used once to create your character before other commands work.
 - **Profile menu**: Tabbed embeds show overview, cultivation details, skills, inventory, equipment, and statistics. Sub-tabs refine each category (e.g., equipment slots, inventory sections, battle vs. longevity stats).
 - **Tick-based progression**: Every 60 seconds is one in-game day (one tick). Cultivation experience and cultivation hours are applied automatically, both while the bot runs and for offline time.
-- **Cultivation system**: Only the Qi Condensation realm remains; it contains 15 layers, each with the sub-stages Initial → Peak (e.g., "Early 5th layer"). Realm breakthroughs beyond this are disabled.
+- **Cultivation system**: Qi Condensation (15 layers with Initial → Peak stages) flows into Foundation Establishment (Initial → Peak stages, no layers). Reaching Peak 15th layer awakens a 5-year "Foundation" bar that raises breakthrough success from 10% to 100%. Breakthroughs between realms are manual via a profile button.
 - **Lifespan tracking**: Each realm grants a fixed lifespan and the profile displays remaining years based on your in-game age.
 - **Persistent storage**: Player data is stored in TOML under `.data/players.toml`.
 
@@ -29,7 +29,7 @@ A xianxia cultivation-themed Discord RPG bot featuring automated time progressio
 ## Tick System and Cultivation Flow
 - **Tick cadence**: A background task runs every 60 seconds (one in-game day). Offline ticks are computed on startup using epoch timestamps so progress continues while the bot is offline.
 - **Cultivation rate**: Default `1.0` exp per tick. Experience accumulates automatically; no manual input required.
-- **Breakthroughs**: When required experience for a sub-stage is exceeded, the player advances through the five sub-stages of each layer, then moves to the next layer up to Peak 15th layer. Realm breakthroughs beyond Qi Condensation are blocked.
+- **Breakthroughs**: Experience advances through the five sub-stages of each Qi Condensation layer until Peak 15th layer. At that cap, a 5-year Foundation bar fills over time, lifting breakthrough chance from 10% to 100% for a manual attempt into Foundation Establishment.
 
 ## Data and Configuration
 - **Player data**: Stored at `.data/players.toml` (created automatically). Do not commit your live data; `.data/` is git-ignored.
