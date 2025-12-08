@@ -588,28 +588,42 @@ def build_profile_embed(
 
         talents_block = (
             "**TALENT**\n"
-            f"```Physical Strength\n{talents.physical_strength:.0f}% ({TalentSheet.quality(talents.physical_strength)})```\n"
-            f"```Constitution\n{talents.constitution:.0f}% ({TalentSheet.quality(talents.constitution)})```\n"
-            f"```Agility\n{talents.agility:.0f}% ({TalentSheet.quality(talents.agility)})```\n"
-            f"```Spiritual Power\n{talents.spiritual_power:.0f}% ({TalentSheet.quality(talents.spiritual_power)})```\n"
-            f"```Perception\n{talents.perception:.0f}% ({TalentSheet.quality(talents.perception)})```"
+            "Physical Strength\n"
+            f"**{talents.physical_strength:.0f}%** ({TalentSheet.quality(talents.physical_strength)})\n"
+            "Constitution\n"
+            f"**{talents.constitution:.0f}%** ({TalentSheet.quality(talents.constitution)})\n"
+            "Agility\n"
+            f"**{talents.agility:.0f}%** ({TalentSheet.quality(talents.agility)})\n"
+            "Spiritual Power\n"
+            f"**{talents.spiritual_power:.0f}%** ({TalentSheet.quality(talents.spiritual_power)})\n"
+            "Perception\n"
+            f"**{talents.perception:.0f}%** ({TalentSheet.quality(talents.perception)})"
         )
 
         stats_block = (
             "**STATS**\n"
-            f"```Physical Strength\n{effective_stats.physical_strength:.1f}```\n"
-            f"```Constitution\n{effective_stats.constitution:.1f}```\n"
-            f"```Agility\n{effective_stats.agility:.1f}```\n"
-            f"```Spiritual Power\n{effective_stats.spiritual_power:.1f}```\n"
-            f"```Perception\n{effective_stats.perception:.1f}```"
+            "Physical Strength\n"
+            f"**{effective_stats.physical_strength:.1f}**\n"
+            "Constitution\n"
+            f"**{effective_stats.constitution:.1f}**\n"
+            "Agility\n"
+            f"**{effective_stats.agility:.1f}**\n"
+            "Spiritual Power\n"
+            f"**{effective_stats.spiritual_power:.1f}**\n"
+            "Perception\n"
+            f"**{effective_stats.perception:.1f}**"
         )
 
         sub_stats_block = (
             "**SUB-STATS**\n"
-            f"```Health Points\n{sub_stats.hp:.0f}```\n"
-            f"```Defense\n{sub_stats.defense:.0f}```\n"
-            f"```Attack Speed\n{sub_stats.attack_speed:.0f}```\n"
-            f"```Evasion\n{sub_stats.evasion:.0f}```"
+            "Health Points:\n"
+            f"**{sub_stats.hp:.0f}**\n"
+            "Defense\n"
+            f"**{sub_stats.defense:.0f}**\n"
+            "Attack Speed\n"
+            f"**{sub_stats.attack_speed:.0f}**\n"
+            "Evasion\n"
+            f"**{sub_stats.evasion:.0f}**"
         )
 
         embed.add_field(name="\u200b", value=talents_block, inline=True)
