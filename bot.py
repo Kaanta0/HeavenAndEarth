@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from heaven_and_earth.calendar import CalendarRepository, GameCalendar
 from heaven_and_earth.models import (
+    DAYS_PER_YEAR,
     CultivationProgress,
     Player,
     REALM_ORDER,
@@ -180,6 +181,7 @@ class PlayerService:
         self.players = self.repo.load_all()
         for player in self.players.values():
             self.world_service.clamp_position(player)
+            self.update_time_flow_tracking(player)
 
     def save(self) -> None:
         self.repo.save_all(self.players)
@@ -199,11 +201,36 @@ class PlayerService:
             player.position_x = 0
             player.position_y = 0
             self.world_service.clamp_position(player)
+            self.update_time_flow_tracking(player)
 
     def ensure_location(self, player: Player) -> None:
         if not player.world_id or not player.zone_id:
             self.assign_beginning_location(player)
         self.world_service.clamp_position(player)
+        self.update_time_flow_tracking(player)
+
+    def update_time_flow_tracking(self, player: Player) -> None:
+        world = self.world_service.get_world(player.world_id)
+        zone = self.world_service.get_zone(player.zone_id)
+        if not world or not zone:
+            player.time_flow_entry_timestamp = None
+            player.time_flow_entry_world_id = None
+            player.time_flow_entry_zone_id = None
+            return
+        effective_flow = max(self.world_service.effective_time_flow(player), 0.0) or 1.0
+        if effective_flow == 1.0:
+            player.time_flow_entry_timestamp = None
+            player.time_flow_entry_world_id = None
+            player.time_flow_entry_zone_id = None
+            return
+        if (
+            player.time_flow_entry_world_id != world.id
+            or player.time_flow_entry_zone_id != zone.id
+            or player.time_flow_entry_timestamp is None
+        ):
+            player.time_flow_entry_timestamp = int(time.time())
+            player.time_flow_entry_world_id = world.id
+            player.time_flow_entry_zone_id = zone.id
 
     def register(self, user: discord.abc.User) -> Player:
         if self.is_registered(user):
@@ -258,6 +285,7 @@ class PlayerService:
     def _apply_time_progression(self, player: Player, real_ticks: int, now: int) -> tuple[List[str], bool, bool]:
         logs: List[str] = []
         changed = False
+        self.update_time_flow_tracking(player)
         total_ticks = player.tick_buffer + real_ticks * self.world_service.effective_time_flow(player)
         ticks_to_apply = int(total_ticks)
         if ticks_to_apply:
@@ -370,6 +398,7 @@ class MainMenuView(discord.ui.View):
                 "You are not registered yet. Use /register to join the world.", ephemeral=True
             )
             return
+        self.service.ensure_location(player)
         avatar_url = interaction.user.display_avatar.url
         await interaction.response.send_message(
             embed=build_profile_embed(
@@ -525,6 +554,36 @@ class BreakthroughButton(discord.ui.Button):
         await interaction.followup.send(note, ephemeral=True)
 
 
+def calculate_time_flow_duration(player: Player, world_service: Optional[WorldService], now: int) -> float | None:
+    if not world_service:
+        return None
+    entry_timestamp = getattr(player, "time_flow_entry_timestamp", None)
+    if entry_timestamp is None:
+        return None
+    effective_flow = max(world_service.effective_time_flow(player), 0.0) or 1.0
+    if effective_flow == 1.0:
+        return None
+    world = world_service.get_world(player.world_id)
+    zone = world_service.get_zone(player.zone_id)
+    if not world or not zone:
+        return None
+    elapsed_seconds = max(now - entry_timestamp, 0)
+    return (elapsed_seconds / SECONDS_PER_TICK) * effective_flow
+
+
+def format_in_world_duration(days: float) -> str:
+    rounded_days = int(round(days))
+    years, remaining_days = divmod(rounded_days, DAYS_PER_YEAR)
+    parts = []
+    if years:
+        parts.append(f"{years} year{'s' if years != 1 else ''}")
+    if remaining_days:
+        parts.append(f"{remaining_days} day{'s' if remaining_days != 1 else ''}")
+    if not parts:
+        return "≈ less than a day"
+    return "≈ " + (" and ".join(parts) if len(parts) == 2 else parts[0])
+
+
 def build_profile_embed(
     player: Player,
     calendar: GameCalendar,
@@ -551,6 +610,7 @@ def build_profile_embed(
             zone_flow = max(zone.time_flow, 0.0) or 1.0
 
     day_seconds = SECONDS_PER_TICK / effective_flow if effective_flow > 0 else SECONDS_PER_TICK
+    time_flow_duration_days = calculate_time_flow_duration(player, world_service, now)
 
     embed = discord.Embed(title="**__PROFILE__**", colour=discord.Colour.yellow())
     if avatar_url:
@@ -590,7 +650,13 @@ def build_profile_embed(
             "**__DATE AND LOCATION__**\n"
             f"{calendar.format_date(now)}\n"
             f"Currently at {world_name} | {zone_name}\n"
-            f"Time flow: x{effective_flow:.2f} (world {world_flow}x, zone {zone_flow}x)\n\n"
+            f"Time flow: x{effective_flow:.2f} (world {world_flow}x, zone {zone_flow}x)\n"
+            + (
+                f"Time spent in current flow: {format_in_world_duration(time_flow_duration_days)}\n"
+                if time_flow_duration_days is not None
+                else ""
+            )
+            + "\n"
             "**__AGE AND LIFESPAN__**\n"
             f"Age: {age_years:.2f} years old\n"
             f"Lifespan: {remaining_life:.2f} years remaining of {lifespan_years:.0f}\n"
@@ -789,6 +855,8 @@ def build_travel_embed(
     world_service: WorldService,
     players_in_zone: Optional[List[Player]] = None,
 ) -> discord.Embed:
+    now = int(time.time())
+    time_flow_duration_days = calculate_time_flow_duration(player, world_service, now)
     embed = discord.Embed(title="Travel", colour=discord.Colour.green())
     embed.add_field(name="World", value=world.name, inline=True)
     embed.add_field(name="Zone", value=zone.name, inline=True)
@@ -798,6 +866,12 @@ def build_travel_embed(
         value=f"x{world_service.effective_time_flow(player):.2f} (world {world.time_flow}x, zone {zone.time_flow}x)",
         inline=False,
     )
+    if time_flow_duration_days is not None:
+        embed.add_field(
+            name="In-world time since entry",
+            value=format_in_world_duration(time_flow_duration_days),
+            inline=False,
+        )
     minimap = render_minimap(player, zone, players_in_zone)
     embed.description = minimap
     return embed
@@ -1023,6 +1097,7 @@ async def profile(interaction: discord.Interaction):
             "You are not registered yet. Use /register to see your profile.", ephemeral=True
         )
         return
+    bot.service.ensure_location(player)
     avatar_url = interaction.user.display_avatar.url
     await interaction.response.send_message(
         embed=build_profile_embed(

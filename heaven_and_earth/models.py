@@ -432,6 +432,9 @@ class Player:
     position_x: int = 0
     position_y: int = 0
     tick_buffer: float = 0.0
+    time_flow_entry_timestamp: int | None = None
+    time_flow_entry_world_id: str | None = None
+    time_flow_entry_zone_id: str | None = None
 
     def age_years(
         self, calendar: "GameCalendar", now: int | None = None, time_flow: float = 1.0
@@ -491,6 +494,9 @@ class Player:
             position_x=int(data.get("position_x", 0)),
             position_y=int(data.get("position_y", 0)),
             tick_buffer=float(data.get("tick_buffer", 0.0)),
+            time_flow_entry_timestamp=data.get("time_flow_entry_timestamp"),
+            time_flow_entry_world_id=data.get("time_flow_entry_world_id"),
+            time_flow_entry_zone_id=data.get("time_flow_entry_zone_id"),
         )
 
 
