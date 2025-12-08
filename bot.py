@@ -506,34 +506,50 @@ def build_profile_embed(
         )
     elif tab == "stats":
         embed.add_field(
-            name="Talents",
+            name="**TALENT**",
             value=(
-                "Physical Strength: 86% (Average)\n"
-                "Constitution: 78% (Average)\n"
-                "Agility: 73% (Trash)\n"
-                "Spiritual Power: 86% (Average)\n"
-                "Perception: 57% (Trash)"
+                "Physical Strength:\n"
+                "**86%** (Average)\n"
+                "Constitution:\n"
+                "**78%** (Average)\n"
+                "Agility:\n"
+                "**73%** (Trash)\n"
+                "Spiritual Power:\n"
+                "**86%** (Average)\n"
+                "Perception:\n"
+                "**57%** (Trash)"
             ),
             inline=False,
         )
+        embed.add_field(name="\u200b", value="\u200b", inline=False)
         embed.add_field(
-            name="Stats",
+            name="**STATS**",
             value=(
-                "Physical Strength: 8.6\n"
-                "Constitution: 7.8\n"
-                "Agility: 7.3\n"
-                "Spiritual Power: 8.6\n"
-                "Perception: 5.7"
+                "Physical Strength:\n"
+                "8.6\n"
+                "Constitution:\n"
+                "7.8\n"
+                "Agility:\n"
+                "7.3\n"
+                "Spiritual Power:\n"
+                "8.6\n"
+                "Perception:\n"
+                "5.7"
             ),
             inline=False,
         )
+        embed.add_field(name="\u200b", value="\u200b", inline=False)
         embed.add_field(
-            name="Sub-Stats",
+            name="**SUB-STATS**",
             value=(
-                "HP: 62\n"
-                "Defense: 12\n"
-                "ATK Speed: 73\n"
-                "Evasion: 15"
+                "HP:\n"
+                "62\n"
+                "Defense:\n"
+                "12\n"
+                "ATK Speed:\n"
+                "73\n"
+                "Evasion:\n"
+                "15"
             ),
             inline=False,
         )
