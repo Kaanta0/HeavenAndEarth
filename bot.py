@@ -1300,22 +1300,6 @@ async def register(interaction: discord.Interaction):
         return
     player = bot.service.register(interaction.user)
     avatar_url = interaction.user.display_avatar.url
-
-    def format_talent_line(label: str, value: float) -> str:
-        quality = TalentSheet.quality(value)
-        return f"**{label}:** {value:.0f}% ({quality})"
-
-    talents = player.talents
-    talent_block = "\n".join(
-        [
-            format_talent_line("Physical Strength", talents.physical_strength),
-            format_talent_line("Constitution", talents.constitution),
-            format_talent_line("Agility", talents.agility),
-            format_talent_line("Spiritual Power", talents.spiritual_power),
-            format_talent_line("Perception", talents.perception),
-        ]
-    )
-
     embed = discord.Embed(
         title="__**A NEW CULTIVATOR AWAKENS**__",
         description=(
@@ -1326,7 +1310,6 @@ async def register(interaction: discord.Interaction):
         colour=discord.Colour.green(),
     )
     embed.set_thumbnail(url=avatar_url)
-    embed.add_field(name="Innate Talent", value=talent_block, inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
