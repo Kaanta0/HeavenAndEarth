@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from heaven_and_earth.calendar import CalendarRepository, GameCalendar
 from heaven_and_earth.models import (
+    CultivationProgress,
     Player,
     REALM_ORDER,
     SECONDS_PER_TICK,
@@ -211,6 +212,13 @@ class PlayerService:
         self.save()
         return player
 
+    def attempt_breakthrough(self, player: Player) -> str:
+        success, note = player.cultivation.attempt_foundation_breakthrough()
+        if success:
+            player.stats.tribulations_survived += 1
+        self.save()
+        return note
+
     def get_player(self, user: discord.abc.User) -> Optional[Player]:
         return self.players.get(user.id)
 
@@ -378,6 +386,7 @@ class TabSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         self.profile_view.current_tab = self.values[0]
         self.profile_view.update_subtabs()
+        self.profile_view.update_breakthrough_button()
         await interaction.response.edit_message(
             embed=build_profile_embed(
                 self.player,
@@ -398,6 +407,7 @@ class SubTabSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         self.profile_view.current_subtab = self.values[0]
+        self.profile_view.update_breakthrough_button()
         await interaction.response.edit_message(
             embed=build_profile_embed(
                 self.profile_view.player,
@@ -431,6 +441,7 @@ class ProfileView(discord.ui.View):
         self.tab_select = TabSelect(player, self)
         self.add_item(self.tab_select)
         self.update_subtabs()
+        self.update_breakthrough_button()
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return interaction.user.id == self.player.user_id
@@ -450,6 +461,46 @@ class ProfileView(discord.ui.View):
             self.add_item(SubTabSelect(self, options))
         else:
             self.current_subtab = None
+
+    def update_breakthrough_button(self) -> None:
+        for child in list(self.children):
+            if isinstance(child, BreakthroughButton):
+                self.remove_item(child)
+        if isinstance(self.player.cultivation, CultivationProgress) and self.player.cultivation.foundation_bar_active():
+            self.add_item(BreakthroughButton(self))
+
+
+class BreakthroughButton(discord.ui.Button):
+    def __init__(self, view: ProfileView):
+        self.profile_view = view
+        label = self._label_text()
+        super().__init__(label=label, style=discord.ButtonStyle.danger)
+
+    def _label_text(self) -> str:
+        chance_percent = self.profile_view.player.cultivation.breakthrough_chance() * 100
+        return f"Breakthrough | {chance_percent:.0f}% chance"
+
+    async def callback(self, interaction: discord.Interaction):
+        player = self.profile_view.service.get_player(interaction.user)
+        if not player:
+            await interaction.response.send_message(
+                "You are not registered yet. Use /register to join the world.", ephemeral=True
+            )
+            return
+        note = self.profile_view.service.attempt_breakthrough(player)
+        self.profile_view.player = player
+        self.label = self._label_text()
+        embed = build_profile_embed(
+            player,
+            self.profile_view.calendar,
+            self.profile_view.current_tab,
+            self.profile_view.current_subtab,
+            self.profile_view.avatar_url,
+            self.profile_view.world_service,
+        )
+        self.profile_view.update_breakthrough_button()
+        await interaction.response.edit_message(embed=embed, view=self.profile_view)
+        await interaction.followup.send(note, ephemeral=True)
 
 
 def build_profile_embed(
@@ -500,6 +551,17 @@ def build_profile_embed(
     progress_bar = "▓" * filled + "░" * (bar_length - filled)
     qi_signature = f"{cultivation.qi_quality.value} {cultivation.qi_type.value}"
     qi_rate = cultivation.qi_gathering_rate()
+    foundation_ratio = max(0.0, min(getattr(cultivation, "foundation_progress", 0.0), 1.0))
+    foundation_filled = int(foundation_ratio * bar_length)
+    foundation_bar = "▓" * foundation_filled + "░" * (bar_length - foundation_filled)
+    foundation_percent = foundation_ratio * 100
+    breakthrough_percent = cultivation.breakthrough_chance() * 100
+    foundation_block = (
+        f"\nFoundation: {foundation_bar} {foundation_percent:.0f}%\n"
+        f"Breakthrough chance: {breakthrough_percent:.0f}% (manual attempt)"
+        if cultivation.foundation_bar_active() or foundation_ratio > 0
+        else ""
+    )
 
     if tab == "overview":
         embed.description = (
@@ -517,7 +579,7 @@ def build_profile_embed(
             f"Qi: {qi_signature}\n"
             f"Rate: {qi_rate:.1f} qi/day\n\n"
             f"Progress: {cultivation.exp:.0f}/{required_exp:.0f} qi\n"
-            f"{progress_bar} {progress_percent:.0f}%"
+            f"{progress_bar} {progress_percent:.0f}%{foundation_block}"
         )
     elif tab == "stats":
         talents = player.talents
@@ -576,11 +638,33 @@ def build_profile_embed(
             f"Qi: {qi_signature}\n"
             f"Rate: {qi_rate:.1f} qi/day\n\n"
             f"Progress: {cultivation.exp:.0f}/{required_exp:.0f} qi\n"
-            f"{progress_bar} {progress_percent:.0f}%"
+            f"{progress_bar} {progress_percent:.0f}%{foundation_block}"
         )
         if subtab == "breakthroughs":
-            embed.add_field(name="Next tribulation", value=f"{ticks_needed:.1f} days until chance to break through.", inline=False)
-            embed.add_field(name="Realms", value=", ".join(realm.value for realm in REALM_ORDER), inline=False)
+            if cultivation.foundation_bar_active():
+                embed.add_field(
+                    name="Foundation consolidation",
+                    value=(
+                        f"~{ticks_needed:.1f} days until the foundation bar is full and chance reaches 100%."
+                        if ticks_needed != float('inf')
+                        else "Foundation bar stalled."
+                    ),
+                    inline=False,
+                )
+                embed.add_field(
+                    name="Breakthrough requirement",
+                    value=(
+                        f"Manual attempt required. Current success chance: {breakthrough_percent:.0f}%."
+                    ),
+                    inline=False,
+                )
+            else:
+                embed.add_field(
+                    name="Next tribulation",
+                    value=f"{ticks_needed:.1f} days until chance to break through.",
+                    inline=False,
+                )
+                embed.add_field(name="Realms", value=", ".join(realm.value for realm in REALM_ORDER), inline=False)
         elif subtab == "rate":
             days = ticks_needed if ticks_needed != float("inf") else float("inf")
             embed.add_field(
