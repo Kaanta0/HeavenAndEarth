@@ -459,6 +459,8 @@ def build_profile_embed(
 ) -> discord.Embed:
     now = int(time.time())
     effective_flow = 1.0
+    world_flow = 1.0
+    zone_flow = 1.0
     world_name = "Unknown world"
     zone_name = "Unknown zone"
     if world_service:
@@ -467,6 +469,10 @@ def build_profile_embed(
         zone = world_service.get_zone(player.zone_id)
         world_name = world.name if world else world_name
         zone_name = zone.name if zone else zone_name
+        if world:
+            world_flow = max(world.time_flow, 0.0) or 1.0
+        if zone:
+            zone_flow = max(zone.time_flow, 0.0) or 1.0
 
     day_seconds = SECONDS_PER_TICK / effective_flow if effective_flow > 0 else SECONDS_PER_TICK
 
@@ -494,7 +500,8 @@ def build_profile_embed(
         embed.description = (
             "**__DATE AND LOCATION__**\n"
             f"{calendar.format_date(now)}\n"
-            f"Currently at {world_name} | {zone_name}\n\n"
+            f"Currently at {world_name} | {zone_name}\n"
+            f"Time flow: x{effective_flow:.2f} (world {world_flow}x, zone {zone_flow}x)\n\n"
             "**__AGE AND LIFESPAN__**\n"
             f"Age: {age_years:.2f} years old\n"
             f"Lifespan: {remaining_life:.2f} years remaining of {lifespan_years:.0f}\n"
