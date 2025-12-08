@@ -1224,18 +1224,18 @@ async def register(interaction: discord.Interaction):
         )
         return
     player = bot.service.register(interaction.user)
-    await interaction.response.send_message(
-        embed=discord.Embed(
-            title="__**A NEW CULTIVATOR AWAKENS**__",
-            description=(
-                f"Welcome to the Nine Heavens, {interaction.user.mention} !\n"
-                "Your destiny is now bound to the heavens. Embrace it or free yourself from it's grasp.\n\n"
-                "Use **/main** to begin"
-            ),
-            colour=discord.Colour.green(),
+    avatar_url = interaction.user.display_avatar.url
+    embed = discord.Embed(
+        title="__**A NEW CULTIVATOR AWAKENS**__",
+        description=(
+            f"Welcome to the Nine Heavens, {interaction.user.mention} !\n"
+            "Your destiny is now bound to the heavens. Embrace it or free yourself from it's grasp.\n\n"
+            "Use **/main** to begin"
         ),
-        ephemeral=True,
+        colour=discord.Colour.green(),
     )
+    embed.set_thumbnail(url=avatar_url)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 def run():
