@@ -41,6 +41,55 @@ STARTING_AGE_YEARS = 10
 REALM_LIFESPAN_YEARS: Dict[Realm, float] = {Realm.QI_CONDENSATION: 120}
 
 
+class QiType(str, Enum):
+    SPIRITUAL = "Spiritual Qi"
+    YIN = "Yin Qi"
+    YANG = "Yang Qi"
+
+    @property
+    def gathering_modifier(self) -> float:
+        return 1.0
+
+
+class QiQuality(str, Enum):
+    FAINT = "Faint"
+    THIN = "Thin"
+    STEADY = "Steady"
+    THICK = "Thick"
+    CONDENSED = "Condensed"
+    HIGHLY_CONCENTRATED = "Highly Concentrated"
+    SUPERDENSE = "Superdense"
+    EXTREMELY_DENSE = "Extremely dense"
+
+    order: ClassVar[List["QiQuality"]] = [
+        FAINT,
+        THIN,
+        STEADY,
+        THICK,
+        CONDENSED,
+        HIGHLY_CONCENTRATED,
+        SUPERDENSE,
+        EXTREMELY_DENSE,
+    ]
+
+    @property
+    def qi_per_day(self) -> float:
+        rates = {
+            QiQuality.FAINT: 1,
+            QiQuality.THIN: 2,
+            QiQuality.STEADY: 4,
+            QiQuality.THICK: 8,
+            QiQuality.CONDENSED: 16,
+            QiQuality.HIGHLY_CONCENTRATED: 32,
+            QiQuality.SUPERDENSE: 64,
+            QiQuality.EXTREMELY_DENSE: 128,
+        }
+        return float(rates[self])
+
+    def is_lower_than(self, other: "QiQuality") -> bool:
+        return self.order.index(self) < self.order.index(other)
+
+
 def default_timestamp() -> int:
     return int(time.time())
 
@@ -56,6 +105,8 @@ class CultivationProgress:
     stage: Stage = Stage.INITIAL
     layer: int = 1
     exp: float = 0.0
+    qi_type: QiType = QiType.SPIRITUAL
+    qi_quality: QiQuality = QiQuality.FAINT
     cultivation_rate: float = 1.0  # percent per tick -> exp per tick
 
     max_qi_layers: ClassVar[int] = 15
@@ -76,6 +127,30 @@ class CultivationProgress:
         except (TypeError, ValueError):
             self.layer = 1
         self.layer = min(max(self.layer, 1), self.max_qi_layers)
+        if isinstance(self.qi_type, str):
+            try:
+                self.qi_type = QiType(self.qi_type)
+            except ValueError:
+                self.qi_type = QiType.SPIRITUAL
+        if isinstance(self.qi_quality, str):
+            try:
+                self.qi_quality = QiQuality(self.qi_quality)
+            except ValueError:
+                self.qi_quality = QiQuality.FAINT
+        self._upgrade_qi_quality_for_layer()
+        self.refresh_cultivation_rate()
+
+    def refresh_cultivation_rate(self) -> None:
+        self.cultivation_rate = self.qi_gathering_rate()
+
+    def qi_gathering_rate(self) -> float:
+        return self.qi_quality.qi_per_day * self.qi_type.gathering_modifier
+
+    def _upgrade_qi_quality_for_layer(self) -> bool:
+        if self.layer >= 6 and self.qi_quality.is_lower_than(QiQuality.THIN):
+            self.qi_quality = QiQuality.THIN
+            return True
+        return False
 
     def ticks_until_breakthrough(self) -> float:
         if self.is_maxed_out():
@@ -110,8 +185,17 @@ class CultivationProgress:
         if self.realm == Realm.QI_CONDENSATION and self.layer < self.max_qi_layers:
             self.layer += 1
             self.stage = Stage.INITIAL
-            return f"Advanced to {self.stage_label()} of {self.realm.value}."
+            return self._handle_layer_advance()
         return self.breakthrough_realm()
+
+    def _handle_layer_advance(self) -> str:
+        if self._upgrade_qi_quality_for_layer():
+            self.refresh_cultivation_rate()
+            return (
+                f"Advanced to {self.stage_label()} of {self.realm.value}. "
+                f"Qi quality refined to {self.qi_quality.value} {self.qi_type.value}."
+            )
+        return f"Advanced to {self.stage_label()} of {self.realm.value}."
 
     def breakthrough_realm(self) -> str:
         realm_index = REALM_ORDER.index(self.realm)

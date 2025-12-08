@@ -498,6 +498,8 @@ def build_profile_embed(
     filled = int(clamped_ratio * bar_length)
     progress_percent = max(0.0, min(ratio * 100, 100.0))
     progress_bar = "▓" * filled + "░" * (bar_length - filled)
+    qi_signature = f"{cultivation.qi_quality.value} {cultivation.qi_type.value}"
+    qi_rate = cultivation.qi_gathering_rate()
 
     if tab == "overview":
         embed.description = (
@@ -512,7 +514,8 @@ def build_profile_embed(
             "**__CULTIVATION__**\n"
             f"Realm: {cultivation.realm.value}\n"
             f"Stage: {cultivation.stage_label()}\n"
-            f"Rate: {cultivation.cultivation_rate:.1f} qi/day\n\n"
+            f"Qi: {qi_signature}\n"
+            f"Rate: {qi_rate:.1f} qi/day\n\n"
             f"Progress: {cultivation.exp:.0f}/{required_exp:.0f} qi\n"
             f"{progress_bar} {progress_percent:.0f}%"
         )
@@ -570,7 +573,8 @@ def build_profile_embed(
             "**CULTIVATION**\n"
             f"Realm: {cultivation.realm.value}\n"
             f"Stage: {cultivation.stage_label()}\n"
-            f"Rate: {cultivation.cultivation_rate:.1f} qi/day\n\n"
+            f"Qi: {qi_signature}\n"
+            f"Rate: {qi_rate:.1f} qi/day\n\n"
             f"Progress: {cultivation.exp:.0f}/{required_exp:.0f} qi\n"
             f"{progress_bar} {progress_percent:.0f}%"
         )
