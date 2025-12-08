@@ -11,7 +11,7 @@ if sys.version_info >= (3, 11):  # pragma: no cover - runtime guard for stdlib a
 else:  # pragma: no cover
     import tomli as tomllib
 
-from .models import Player, World, Zone
+from .models import Player, TalentSheet, World, Zone
 
 
 class PlayerRepository:
@@ -36,7 +36,7 @@ class PlayerRepository:
         os.replace(tmp_path, self.path)
 
     def create_player(self, players: Dict[int, Player], user_id: int, user_name: str) -> Player:
-        player = Player(user_id=user_id, name=user_name)
+        player = Player(user_id=user_id, name=user_name, talents=TalentSheet.roll())
         players[user_id] = player
         return player
 
