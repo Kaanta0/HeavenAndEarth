@@ -182,6 +182,9 @@ class PlayerService:
     def save(self) -> None:
         self.repo.save_all(self.players)
 
+    def players_in_zone(self, zone_id: str) -> List[Player]:
+        return [player for player in self.players.values() if player.zone_id == zone_id]
+
     def is_registered(self, user: discord.abc.User) -> bool:
         return user.id in self.players
 
@@ -627,7 +630,7 @@ def build_profile_embed(
     return embed
 
 
-def render_minimap(player: Player, zone: Zone) -> str:
+def render_minimap(player: Player, zone: Zone, players_in_zone: Optional[List[Player]] = None) -> str:
     width = min(zone.x_size, 15)
     height = min(zone.y_size, 16)
     start_x = max(0, min(player.position_x - width // 2, max(zone.x_size - width, 0)))
@@ -638,12 +641,30 @@ def render_minimap(player: Player, zone: Zone) -> str:
         for x in range(width):
             global_x = start_x + x
             global_y = start_y + y
-            row.append("🧭" if (global_x, global_y) == (player.position_x, player.position_y) else "▫️")
+            if (global_x, global_y) == (player.position_x, player.position_y):
+                row.append("🧭")
+                continue
+            other_players_here = []
+            for other in players_in_zone or []:
+                if (other.position_x, other.position_y) == (global_x, global_y) and other.user_id != player.user_id:
+                    other_players_here.append(other)
+            if len(other_players_here) == 1:
+                row.append("🧍")
+            elif len(other_players_here) > 1:
+                row.append("👥")
+            else:
+                row.append("▫️")
         grid.append("".join(row))
     return "\n".join(grid)
 
 
-def build_travel_embed(player: Player, world: World, zone: Zone, world_service: WorldService) -> discord.Embed:
+def build_travel_embed(
+    player: Player,
+    world: World,
+    zone: Zone,
+    world_service: WorldService,
+    players_in_zone: Optional[List[Player]] = None,
+) -> discord.Embed:
     embed = discord.Embed(title="Travel", colour=discord.Colour.green())
     embed.add_field(name="World", value=world.name, inline=True)
     embed.add_field(name="Zone", value=zone.name, inline=True)
@@ -653,23 +674,81 @@ def build_travel_embed(player: Player, world: World, zone: Zone, world_service: 
         value=f"x{world_service.effective_time_flow(player):.2f} (world {world.time_flow}x, zone {zone.time_flow}x)",
         inline=False,
     )
-    minimap = render_minimap(player, zone)
+    minimap = render_minimap(player, zone, players_in_zone)
     embed.description = minimap
     return embed
 
 
+class TravelSession:
+    def __init__(self, player_id: int, zone_id: str, view: "TravelView", message: discord.Message):
+        self.player_id = player_id
+        self.zone_id = zone_id
+        self.view = view
+        self.message = message
+
+
+class TravelSessionManager:
+    def __init__(self) -> None:
+        self.sessions: Dict[int, TravelSession] = {}
+
+    def register(self, player: Player, zone_id: str, view: "TravelView", message: discord.Message) -> None:
+        view.message = message
+        self.sessions[message.id] = TravelSession(player.user_id, zone_id, view, message)
+
+    def remove(self, view: "TravelView") -> None:
+        if view.message and view.message.id in self.sessions:
+            self.sessions.pop(view.message.id, None)
+
+    async def refresh_zone(
+        self,
+        zone_id: str,
+        player_service: PlayerService,
+        world_service: WorldService,
+        *,
+        exclude_message_id: Optional[int] = None,
+    ) -> None:
+        zone = world_service.get_zone(zone_id)
+        world = world_service.get_world(zone.world_id) if zone else None
+        if not zone or not world:
+            return
+        players_in_zone = player_service.players_in_zone(zone_id)
+        for message_id, session in list(self.sessions.items()):
+            if session.zone_id != zone_id or message_id == exclude_message_id:
+                continue
+            player = player_service.players.get(session.player_id)
+            if not player:
+                continue
+            await session.view.update_message(player, world, zone, players_in_zone)
+
+
+travel_sessions = TravelSessionManager()
+
+
 class TravelView(discord.ui.View):
-    def __init__(self, service: PlayerService, world_service: WorldService, player: Player):
+    def __init__(
+        self, service: PlayerService, world_service: WorldService, player: Player, session_manager: TravelSessionManager
+    ):
         super().__init__(timeout=180)
         self.service = service
         self.world_service = world_service
         self.player = player
+        self.session_manager = session_manager
+        self.message: Optional[discord.Message] = None
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return interaction.user.id == self.player.user_id
 
     async def on_timeout(self) -> None:
+        self.session_manager.remove(self)
         self.clear_items()
+
+    async def update_message(
+        self, player: Player, world: World, zone: Zone, players_in_zone: Optional[List[Player]] = None
+    ) -> None:
+        if not self.message:
+            return
+        embed = build_travel_embed(player, world, zone, self.world_service, players_in_zone)
+        await self.message.edit(embed=embed, view=self)
 
     async def move(self, dx: int, dy: int, interaction: discord.Interaction) -> None:
         zone = self.world_service.get_zone(self.player.zone_id)
@@ -682,8 +761,12 @@ class TravelView(discord.ui.View):
         self.world_service.clamp_position(self.player)
         self.player.stats.steps_travelled += abs(dx) + abs(dy)
         self.service.save()
+        players_in_zone = self.service.players_in_zone(zone.id)
         await interaction.response.edit_message(
-            embed=build_travel_embed(self.player, world, zone, self.world_service), view=self
+            embed=build_travel_embed(self.player, world, zone, self.world_service, players_in_zone), view=self
+        )
+        await self.session_manager.refresh_zone(
+            zone.id, self.service, self.world_service, exclude_message_id=self.message.id if self.message else None
         )
 
     @discord.ui.button(label="↑", style=discord.ButtonStyle.primary)
@@ -730,11 +813,14 @@ async def send_travel_panel(
         return
     world_service.clamp_position(player)
     service.save()
+    view = TravelView(service, world_service, player, travel_sessions)
     await interaction.response.send_message(
-        embed=build_travel_embed(player, world, zone, world_service),
-        view=TravelView(service, world_service, player),
+        embed=build_travel_embed(player, world, zone, world_service, service.players_in_zone(zone.id)),
+        view=view,
         ephemeral=True,
     )
+    message = await interaction.original_response()
+    travel_sessions.register(player, zone.id, view, message)
 
 
 class HeavenAndEarthBot(commands.Bot):
