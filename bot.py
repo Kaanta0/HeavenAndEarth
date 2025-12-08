@@ -371,7 +371,7 @@ class MainMenuView(discord.ui.View):
 class TabSelect(discord.ui.Select):
     def __init__(self, player: Player, view: "ProfileView"):
         options = [
-            discord.SelectOption(label="Overview", value="overview", description="Age and cultivation"),
+            discord.SelectOption(label="Overview", value="overview", description="Age and location"),
             discord.SelectOption(label="Stats", value="stats", description="Talents and attributes"),
             discord.SelectOption(label="Cultivation", value="cultivation", description="Realms and tribulations"),
             discord.SelectOption(label="Skills", value="skills", description="Talents and arts"),
@@ -572,14 +572,7 @@ def build_profile_embed(
             "**__AGE AND LIFESPAN__**\n"
             f"Age: {age_years:.2f} years old\n"
             f"Lifespan: {remaining_life:.2f} years remaining of {lifespan_years:.0f}\n"
-            f"Birthday: {calendar.format_date(player.birthday)}\n\n"
-            "**__CULTIVATION__**\n"
-            f"Realm: {cultivation.realm.value}\n"
-            f"Stage: {cultivation.stage_label()}\n"
-            f"Qi: {qi_signature}\n"
-            f"Rate: {qi_rate:.1f} qi/day\n\n"
-            f"Progress: {cultivation.exp:.0f}/{required_exp:.0f} qi\n"
-            f"{progress_bar} {progress_percent:.0f}%{foundation_block}"
+            f"Birthday: {calendar.format_date(player.birthday)}"
         )
     elif tab == "stats":
         talents = player.talents
