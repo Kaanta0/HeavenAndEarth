@@ -9,6 +9,7 @@ A xianxia cultivation-themed Discord RPG bot featuring automated time progressio
 - **Tick-based progression**: Every 60 seconds is one in-game day (one tick). Cultivation experience and cultivation hours are applied automatically, both while the bot runs and for offline time.
 - **Cultivation system**: Qi Condensation (15 layers with Initial → Peak stages) flows into Foundation Establishment (Initial → Peak stages, no layers). Reaching Peak 15th layer awakens a 5-year "Foundation" bar that raises breakthrough success from 10% to 100%. Breakthroughs between realms are manual via a profile button.
 - **Lifespan tracking**: Each realm grants a fixed lifespan and the profile displays remaining years based on your in-game age.
+- **Mortality**: When remaining lifespan hits zero, a cultivator dies permanently and must re-register to start anew.
 - **Persistent storage**: Player data is stored in TOML under `.data/players.toml`.
 
 ## Commands

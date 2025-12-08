@@ -170,10 +170,11 @@ class WorldService:
         return None
 
 class PlayerService:
-    def __init__(self, world_service: WorldService) -> None:
+    def __init__(self, world_service: WorldService, calendar: GameCalendar) -> None:
         self.repo = PlayerRepository()
         self.players: Dict[int, Player] = {}
         self.world_service = world_service
+        self.calendar = calendar
 
     def load(self) -> None:
         self.players = self.repo.load_all()
@@ -254,7 +255,7 @@ class PlayerService:
         if changed:
             self.save()
 
-    def _apply_time_progression(self, player: Player, real_ticks: int, now: int) -> tuple[List[str], bool]:
+    def _apply_time_progression(self, player: Player, real_ticks: int, now: int) -> tuple[List[str], bool, bool]:
         logs: List[str] = []
         changed = False
         total_ticks = player.tick_buffer + real_ticks * self.world_service.effective_time_flow(player)
@@ -271,19 +272,32 @@ class PlayerService:
         changed = True
         if player.last_tick_timestamp > now:
             player.last_tick_timestamp = now
-        return logs, changed
+        remaining_life = player.remaining_lifespan_years(
+            self.calendar, now, self.world_service.effective_time_flow(player)
+        )
+        return logs, changed, remaining_life <= 0
 
     def apply_offline_ticks(self) -> List[str]:
         now = int(time.time())
         logs: List[str] = []
         changed = False
-        for player in self.players.values():
+        players_to_remove: List[int] = []
+        for player in list(self.players.values()):
             elapsed = max(now - player.last_tick_timestamp, 0)
             real_ticks = elapsed // SECONDS_PER_TICK
             if real_ticks:
-                notes, player_changed = self._apply_time_progression(player, int(real_ticks), now)
+                notes, player_changed, perished = self._apply_time_progression(
+                    player, int(real_ticks), now
+                )
                 logs.extend(notes)
                 changed = changed or player_changed
+                if perished:
+                    players_to_remove.append(player.user_id)
+        for user_id in players_to_remove:
+            player = self.players.pop(user_id, None)
+            if player:
+                logs.append(f"{player.name}: Lifespan depleted; the soul dissipates.")
+                changed = True
         if logs or changed:
             self.save()
         return logs
@@ -292,12 +306,20 @@ class PlayerService:
         now = int(time.time())
         logs: List[str] = []
         changed = False
-        for player in self.players.values():
+        players_to_remove: List[int] = []
+        for player in list(self.players.values()):
             elapsed = max(now - player.last_tick_timestamp, 0)
             real_ticks = max(int(elapsed // SECONDS_PER_TICK), 1)
-            notes, player_changed = self._apply_time_progression(player, real_ticks, now)
+            notes, player_changed, perished = self._apply_time_progression(player, real_ticks, now)
             logs.extend(notes)
             changed = changed or player_changed
+            if perished:
+                players_to_remove.append(player.user_id)
+        for user_id in players_to_remove:
+            player = self.players.pop(user_id, None)
+            if player:
+                logs.append(f"{player.name}: Lifespan depleted; the soul dissipates.")
+                changed = True
         if logs or changed:
             self.save()
         else:
@@ -933,7 +955,7 @@ class HeavenAndEarthBot(commands.Bot):
         self.calendar_repo = CalendarRepository()
         self.calendar = GameCalendar(self.calendar_repo.load_or_create_start())
         self.worlds = WorldService()
-        self.service = PlayerService(self.worlds)
+        self.service = PlayerService(self.worlds, self.calendar)
         self.sync_guild_id = sync_guild_id
 
     async def setup_hook(self) -> None:
