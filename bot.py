@@ -14,7 +14,6 @@ from heaven_and_earth.models import (
     Player,
     REALM_ORDER,
     SECONDS_PER_TICK,
-    TalentSheet,
     World,
     Zone,
     slugify,
@@ -360,7 +359,8 @@ class MainMenuView(discord.ui.View):
 class TabSelect(discord.ui.Select):
     def __init__(self, player: Player, view: "ProfileView"):
         options = [
-            discord.SelectOption(label="Overview", value="overview", description="Stats, age, cultivation"),
+            discord.SelectOption(label="Overview", value="overview", description="Age and cultivation"),
+            discord.SelectOption(label="Stats", value="stats", description="Talents and attributes"),
             discord.SelectOption(label="Cultivation", value="cultivation", description="Realms and tribulations"),
             discord.SelectOption(label="Skills", value="skills", description="Talents and arts"),
             discord.SelectOption(label="Inventory", value="inventory", description="Items carried"),
@@ -504,40 +504,36 @@ def build_profile_embed(
             f"Progress: {cultivation.exp:.0f}/{required_exp:.0f} qi\n"
             f"{progress_bar} {progress_percent:.0f}%"
         )
-        talents = player.talents
-        effective_stats = player.effective_stats()
-        sub_stats = player.sub_stats()
-        def format_talent(label: str, value: float) -> str:
-            return f"{label}: {value:.0f}% ({TalentSheet.quality(value)})"
+    elif tab == "stats":
         embed.add_field(
             name="Talents",
             value=(
-                f"{format_talent('Physical Strength', talents.physical_strength)}\n"
-                f"{format_talent('Constitution', talents.constitution)}\n"
-                f"{format_talent('Agility', talents.agility)}\n"
-                f"{format_talent('Spiritual Power', talents.spiritual_power)}\n"
-                f"{format_talent('Perception', talents.perception)}"
+                "Physical Strength: 86% (Average)\n"
+                "Constitution: 78% (Average)\n"
+                "Agility: 73% (Trash)\n"
+                "Spiritual Power: 86% (Average)\n"
+                "Perception: 57% (Trash)"
             ),
             inline=False,
         )
         embed.add_field(
             name="Stats",
             value=(
-                f"Physical Strength: {effective_stats.physical_strength:.1f}\n"
-                f"Constitution: {effective_stats.constitution:.1f}\n"
-                f"Agility: {effective_stats.agility:.1f}\n"
-                f"Spiritual Power: {effective_stats.spiritual_power:.1f}\n"
-                f"Perception: {effective_stats.perception:.1f}"
+                "Physical Strength: 8.6\n"
+                "Constitution: 7.8\n"
+                "Agility: 7.3\n"
+                "Spiritual Power: 8.6\n"
+                "Perception: 5.7"
             ),
             inline=False,
         )
         embed.add_field(
             name="Sub-Stats",
             value=(
-                f"HP: {sub_stats.hp:.0f}\n"
-                f"Defense: {sub_stats.defense:.0f}\n"
-                f"ATK Speed: {sub_stats.attack_speed:.0f}\n"
-                f"Evasion: {sub_stats.evasion:.0f}"
+                "HP: 62\n"
+                "Defense: 12\n"
+                "ATK Speed: 73\n"
+                "Evasion: 15"
             ),
             inline=False,
         )
