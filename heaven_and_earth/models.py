@@ -161,53 +161,6 @@ class PlayerStats:
 
 
 @dataclass
-class TalentSheet:
-    physical_strength: float = 100.0
-    constitution: float = 100.0
-    agility: float = 100.0
-    spiritual_power: float = 100.0
-    perception: float = 100.0
-
-    def multiplier(self, value: float) -> float:
-        return max(value, 0.0) / 100.0
-
-
-@dataclass
-class CoreStats:
-    physical_strength: float = 10.0
-    constitution: float = 10.0
-    agility: float = 10.0
-    spiritual_power: float = 10.0
-    perception: float = 10.0
-
-    def effective(self, talents: TalentSheet) -> "CoreStats":
-        return CoreStats(
-            physical_strength=self.physical_strength * talents.multiplier(talents.physical_strength),
-            constitution=self.constitution * talents.multiplier(talents.constitution),
-            agility=self.agility * talents.multiplier(talents.agility),
-            spiritual_power=self.spiritual_power * talents.multiplier(talents.spiritual_power),
-            perception=self.perception * talents.multiplier(talents.perception),
-        )
-
-
-@dataclass
-class SubStats:
-    hp: float
-    defense: float
-    attack_speed: float
-    evasion: float
-
-    @staticmethod
-    def from_effective(core: CoreStats) -> "SubStats":
-        return SubStats(
-            hp=core.constitution * 8,
-            defense=core.constitution * 1.6,
-            attack_speed=core.agility * 10,
-            evasion=core.agility * 2,
-        )
-
-
-@dataclass
 class EquipmentSlot:
     name: str
     item: str = ""
@@ -229,8 +182,6 @@ class Player:
     created_at: int = field(default_factory=default_timestamp)
     birthday: int = field(default_factory=default_birthday)
     stats: PlayerStats = field(default_factory=PlayerStats)
-    core_stats: CoreStats = field(default_factory=CoreStats)
-    talents: TalentSheet = field(default_factory=TalentSheet)
     cultivation: CultivationProgress = field(default_factory=CultivationProgress)
     inventory: List[str] = field(default_factory=list)
     equipment: Dict[str, EquipmentSlot] = field(
@@ -247,12 +198,6 @@ class Player:
         now = now or int(time.time())
         days_lived = calendar.days_elapsed(self.birthday, now)
         return days_lived / DAYS_PER_YEAR
-
-    def effective_stats(self) -> CoreStats:
-        return self.core_stats.effective(self.talents)
-
-    def sub_stats(self) -> SubStats:
-        return SubStats.from_effective(self.effective_stats())
 
     def lifespan_years(self) -> float:
         return REALM_LIFESPAN_YEARS.get(self.cultivation.realm, REALM_LIFESPAN_YEARS[Realm.QI_CONDENSATION])
@@ -284,8 +229,6 @@ class Player:
             created_at=data.get("created_at", default_timestamp()),
             birthday=data.get("birthday", default_birthday()),
             stats=PlayerStats(**data.get("stats", {})),
-            core_stats=CoreStats(**data.get("core_stats", {})),
-            talents=TalentSheet(**data.get("talents", {})),
             cultivation=CultivationProgress(**data.get("cultivation", {})),
             inventory=list(data.get("inventory", [])),
             equipment={k: EquipmentSlot(**v) for k, v in data.get("equipment", {}).items()}
