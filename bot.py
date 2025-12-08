@@ -538,9 +538,9 @@ def build_profile_embed(
     else:
         day_length_text = f"{day_seconds:.0f} seconds"
     embed.set_footer(text=f"One in-game day passes every {day_length_text}.")
-    age_years = player.age_years(calendar, now)
+    age_years = player.age_years(calendar, now, effective_flow)
     lifespan_years = player.lifespan_years()
-    remaining_life = player.remaining_lifespan_years(calendar, now)
+    remaining_life = player.remaining_lifespan_years(calendar, now, effective_flow)
     cultivation = player.cultivation
     bar_length = 20
     required_exp = cultivation.required_exp()

@@ -433,9 +433,11 @@ class Player:
     position_y: int = 0
     tick_buffer: float = 0.0
 
-    def age_years(self, calendar: "GameCalendar", now: int | None = None) -> float:
+    def age_years(
+        self, calendar: "GameCalendar", now: int | None = None, time_flow: float = 1.0
+    ) -> float:
         now = now or int(time.time())
-        days_lived = calendar.days_elapsed(self.birthday, now)
+        days_lived = calendar.days_elapsed(self.birthday, now) * max(time_flow, 0.0)
         return days_lived / DAYS_PER_YEAR
 
     def effective_stats(self) -> CoreStats:
@@ -447,8 +449,10 @@ class Player:
     def lifespan_years(self) -> float:
         return REALM_LIFESPAN_YEARS.get(self.cultivation.realm, REALM_LIFESPAN_YEARS[Realm.QI_CONDENSATION])
 
-    def remaining_lifespan_years(self, calendar: "GameCalendar", now: int | None = None) -> float:
-        return max(self.lifespan_years() - self.age_years(calendar, now), 0.0)
+    def remaining_lifespan_years(
+        self, calendar: "GameCalendar", now: int | None = None, time_flow: float = 1.0
+    ) -> float:
+        return max(self.lifespan_years() - self.age_years(calendar, now, time_flow), 0.0)
 
     def apply_ticks(self, ticks: int) -> List[str]:
         self.stats.hours_cultivated += ticks * 24
