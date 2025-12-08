@@ -482,14 +482,15 @@ def build_profile_embed(
     lifespan_years = player.lifespan_years()
     remaining_life = player.remaining_lifespan_years(calendar, now)
     cultivation = player.cultivation
+    bar_length = 20
+    required_exp = cultivation.required_exp()
+    ratio = cultivation.exp / required_exp if required_exp else 0.0
+    clamped_ratio = max(0.0, min(ratio, 1.0))
+    filled = int(clamped_ratio * bar_length)
+    progress_percent = max(0.0, min(ratio * 100, 100.0))
+    progress_bar = "▓" * filled + "░" * (bar_length - filled)
+
     if tab == "overview":
-        bar_length = 20
-        required_exp = cultivation.required_exp()
-        ratio = cultivation.exp / required_exp if required_exp else 0.0
-        clamped_ratio = max(0.0, min(ratio, 1.0))
-        filled = int(clamped_ratio * bar_length)
-        progress_percent = max(0.0, min(ratio * 100, 100.0))
-        progress_bar = "▓" * filled + "░" * (bar_length - filled)
         embed.description = (
             "**__DATE AND LOCATION__**\n"
             f"{calendar.format_date(now)}\n"
@@ -556,10 +557,12 @@ def build_profile_embed(
     elif tab == "cultivation":
         ticks_needed = cultivation.ticks_until_breakthrough()
         embed.description = (
-            f"Realm: **{cultivation.realm.value}**\n"
-            f"Stage: **{cultivation.stage_label()}**\n"
-            f"Current qi: **{cultivation.exp:.1f}/{cultivation.required_exp():.1f}**\n"
-            f"Rate: **{cultivation.cultivation_rate:.1f} qi/day**"
+            "**CULTIVATION**\n"
+            f"Realm: {cultivation.realm.value}\n"
+            f"Stage: {cultivation.stage_label()}\n"
+            f"Rate: {cultivation.cultivation_rate:.1f} qi/day\n\n"
+            f"Progress: {cultivation.exp:.0f}/{required_exp:.0f} qi\n"
+            f"{progress_bar} {progress_percent:.0f}%"
         )
         if subtab == "breakthroughs":
             embed.add_field(name="Next tribulation", value=f"{ticks_needed:.1f} days until chance to break through.", inline=False)
