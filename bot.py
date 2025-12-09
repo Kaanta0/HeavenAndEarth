@@ -705,49 +705,24 @@ def build_profile_embed(
         bold = "\u001b[1m"
         reset = "\u001b[0m"
 
-        def format_stat_entry(label: str, value: str, base: str | None = None) -> str:
+        def format_stat_entry(label: str, value: str) -> str:
             bold_value = f"{bold}{value}{reset}"
-            base_line = f"({base})\n" if base is not None else ""
             return (
                 "```ansi\n"
                 f"{label}\n"
-                f"{base_line}"
                 f"{bold_value}\n"
                 "```"
             )
 
         talents_block = format_talents_block(talents)
 
-        def format_base(value: float) -> str:
-            return f"{value:.1f}".rstrip("0").rstrip(".") if value % 1 == 0 else f"{value:.1f}"
-
         stats_block = "**STATS**\n" + "\n".join(
             [
-                format_stat_entry(
-                    "Physical Strength",
-                    f"{effective_stats.physical_strength:.1f}",
-                    format_base(player.core_stats.physical_strength),
-                ),
-                format_stat_entry(
-                    "Constitution",
-                    f"{effective_stats.constitution:.1f}",
-                    format_base(player.core_stats.constitution),
-                ),
-                format_stat_entry(
-                    "Agility",
-                    f"{effective_stats.agility:.1f}",
-                    format_base(player.core_stats.agility),
-                ),
-                format_stat_entry(
-                    "Spiritual Power",
-                    f"{effective_stats.spiritual_power:.1f}",
-                    format_base(player.core_stats.spiritual_power),
-                ),
-                format_stat_entry(
-                    "Perception",
-                    f"{effective_stats.perception:.1f}",
-                    format_base(player.core_stats.perception),
-                ),
+                format_stat_entry("Physical Strength", f"{effective_stats.physical_strength:.1f}"),
+                format_stat_entry("Constitution", f"{effective_stats.constitution:.1f}"),
+                format_stat_entry("Agility", f"{effective_stats.agility:.1f}"),
+                format_stat_entry("Spiritual Power", f"{effective_stats.spiritual_power:.1f}"),
+                format_stat_entry("Perception", f"{effective_stats.perception:.1f}"),
             ]
         )
 
